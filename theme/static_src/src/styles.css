@@ -1,0 +1,154 @@
+/* ============================================================
+   THE OBSIDIAN OBSERVATORY — Design System
+   MAS-D Research Platform
+   ============================================================ */
+
+/* Google Fonts — must precede all other rules */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+/**
+ * Scan all Django templates, Python views, and JS files for Tailwind classes.
+ */
+@source "../../../**/*.{html,py,js}";
+
+/* ────────────────────────────────────────────────────────────
+   Design Tokens (Tailwind v4 @theme)
+   ──────────────────────────────────────────────────────────── */
+@theme {
+  /* === Color Palette === */
+  --color-void: #0b0e14;
+  --color-layer-1: #10131a;
+  --color-layer-2: #1c2028;
+  --color-layer-3: #252930;
+
+  /* Accent Neons — Agent Waypoints */
+  --color-cyan: #99f7ff;
+  --color-purple: #d177ff;
+  --color-emerald: #a5ffb8;
+
+  /* Semantic shades */
+  --color-cyan-dim: #4da8b3;
+  --color-purple-dim: #9a52b8;
+  --color-emerald-dim: #6db87a;
+
+  /* Text hierarchy */
+  --color-text-primary: #e8eaed;
+  --color-text-secondary: #9aa0a6;
+  --color-text-muted: #5f6368;
+
+  /* Status */
+  --color-error: #f28b82;
+  --color-warning: #fdd663;
+  --color-success: #a5ffb8;
+
+  /* === Typography === */
+  --font-headline: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* === Border Radius — NO-LINE POLICY === */
+  --radius-none: 0px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+  --radius-full: 0px;
+}
+
+/* ────────────────────────────────────────────────────────────
+   Global Base Styles
+   ──────────────────────────────────────────────────────────── */
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-radius: 0 !important;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background-color: var(--color-void);
+    color: var(--color-text-primary);
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-headline);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+/* ────────────────────────────────────────────────────────────
+   Component Utilities — Tonal Layering
+   ──────────────────────────────────────────────────────────── */
+@layer components {
+  /* Surface cards with tonal elevation */
+  .surface-1 {
+    background-color: var(--color-layer-1);
+  }
+
+  .surface-2 {
+    background-color: var(--color-layer-2);
+  }
+
+  .surface-3 {
+    background-color: var(--color-layer-3);
+  }
+
+  /* Neon glow effects for agent states */
+  .glow-cyan {
+    box-shadow: 0 0 15px rgba(153, 247, 255, 0.3);
+  }
+
+  .glow-purple {
+    box-shadow: 0 0 15px rgba(209, 119, 255, 0.3);
+  }
+
+  .glow-emerald {
+    box-shadow: 0 0 15px rgba(165, 255, 184, 0.3);
+  }
+
+  /* Pulse animation for kinetic feedback */
+  .pulse-cyan {
+    animation: pulse-glow 2s ease-in-out infinite;
+    --pulse-color: rgba(153, 247, 255, 0.4);
+  }
+
+  .pulse-purple {
+    animation: pulse-glow 2s ease-in-out infinite;
+    --pulse-color: rgba(209, 119, 255, 0.4);
+  }
+
+  .pulse-emerald {
+    animation: pulse-glow 2s ease-in-out infinite;
+    --pulse-color: rgba(165, 255, 184, 0.4);
+  }
+}
+
+/* ────────────────────────────────────────────────────────────
+   Keyframes — Kinetic Feedback
+   ──────────────────────────────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px var(--pulse-color, rgba(153, 247, 255, 0.2));
+  }
+  50% {
+    box-shadow: 0 0 20px var(--pulse-color, rgba(153, 247, 255, 0.5));
+  }
+}

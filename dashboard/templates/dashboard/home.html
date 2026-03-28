@@ -1,0 +1,233 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}MAS-D — The Obsidian Observatory{% endblock %}
+
+{% block content %}
+<div class="min-h-screen p-6">
+
+    <!-- ═══════════════════════════════════════════════════════════
+         HEADER — System Identity
+         ═══════════════════════════════════════════════════════════ -->
+    <header class="mb-8">
+        <div class="flex items-end justify-between">
+            <div>
+                <h1 class="text-4xl font-bold tracking-tight text-cyan">
+                    MAS-D
+                </h1>
+                <p class="mt-1 text-text-secondary font-mono text-sm">
+                    Multi-Agent System Dynamics · Research Platform
+                </p>
+            </div>
+            <div class="font-mono text-xs text-text-muted">
+                v0.1.0 · Design System Verification
+            </div>
+        </div>
+    </header>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         MAIN GRID — Asymmetric Command Center Layout
+         ═══════════════════════════════════════════════════════════ -->
+    <div class="grid grid-cols-12 gap-4">
+
+        <!-- ─── LEFT: Primary Panel (8 cols) ─── -->
+        <div class="col-span-8 space-y-4">
+
+            <!-- Color Palette -->
+            <section class="surface-1 p-6" id="color-palette">
+                <h2 class="text-xl mb-4 text-text-primary">
+                    Color Palette
+                </h2>
+                <div class="grid grid-cols-4 gap-3">
+                    <div class="h-20 bg-void flex items-end p-2">
+                        <span class="font-mono text-xs text-text-muted">void #0b0e14</span>
+                    </div>
+                    <div class="h-20 surface-1 flex items-end p-2">
+                        <span class="font-mono text-xs text-text-muted">layer-1 #10131a</span>
+                    </div>
+                    <div class="h-20 surface-2 flex items-end p-2">
+                        <span class="font-mono text-xs text-text-muted">layer-2 #1c2028</span>
+                    </div>
+                    <div class="h-20 surface-3 flex items-end p-2">
+                        <span class="font-mono text-xs text-text-muted">layer-3 #252930</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-3 mt-3">
+                    <div class="h-16 bg-cyan/20 flex items-center justify-center">
+                        <span class="font-mono text-sm text-cyan">cyan #99f7ff</span>
+                    </div>
+                    <div class="h-16 bg-purple/20 flex items-center justify-center">
+                        <span class="font-mono text-sm text-purple">purple #d177ff</span>
+                    </div>
+                    <div class="h-16 bg-emerald/20 flex items-center justify-center">
+                        <span class="font-mono text-sm text-emerald">emerald #a5ffb8</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Typography Samples -->
+            <section class="surface-2 p-6" id="typography">
+                <h2 class="text-xl mb-4 text-text-primary">
+                    Typography
+                </h2>
+                <div class="space-y-4">
+                    <div class="surface-1 p-4">
+                        <p class="text-xs text-text-muted font-mono mb-1">font-headline · Space Grotesk</p>
+                        <h3 class="text-3xl font-bold font-headline">
+                            Observing Cognitive Conflict
+                        </h3>
+                    </div>
+                    <div class="surface-1 p-4">
+                        <p class="text-xs text-text-muted font-mono mb-1">font-body · Inter</p>
+                        <p class="text-base font-body text-text-primary">
+                            The multi-agent debate protocol enables structured confrontation between LLM-powered
+                            expert agents, revealing patterns in reasoning, argumentation, and cognitive bias
+                            under adversarial conditions.
+                        </p>
+                    </div>
+                    <div class="surface-1 p-4">
+                        <p class="text-xs text-text-muted font-mono mb-1">font-mono · JetBrains Mono</p>
+                        <p class="text-sm font-mono text-cyan">
+                            [2026-03-28T12:00:00Z] agent_alpha → thought_log: "Analyzing premise validity..."
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Buttons & Interactive Elements -->
+            <section class="surface-1 p-6" id="interactive-elements">
+                <h2 class="text-xl mb-4 text-text-primary">
+                    Interactive Elements
+                </h2>
+                <div class="flex flex-wrap gap-3">
+                    <button class="bg-cyan text-void px-6 py-2 font-mono text-sm font-semibold hover:bg-cyan/80 transition-colors" id="btn-primary">
+                        INITIATE SIMULATION
+                    </button>
+                    <button class="bg-layer-3 text-text-primary px-6 py-2 font-mono text-sm hover:bg-layer-2 transition-colors" id="btn-secondary">
+                        CONFIGURE SESSION
+                    </button>
+                    <button class="bg-error/20 text-error px-6 py-2 font-mono text-sm hover:bg-error/30 transition-colors" id="btn-kill-switch">
+                        ⚠ KILL SWITCH
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <!-- ─── RIGHT: Secondary Panel (4 cols) ─── -->
+        <div class="col-span-4 space-y-4">
+
+            <!-- System Status Card -->
+            <section class="surface-2 p-5" id="system-status">
+                <h3 class="text-sm font-mono text-text-muted mb-3 uppercase tracking-widest">
+                    System Status
+                </h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-text-secondary text-sm">Engine</span>
+                        <span class="text-emerald font-mono text-xs">ONLINE</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-text-secondary text-sm">Agents</span>
+                        <span class="text-text-muted font-mono text-xs">0 / 4</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-text-secondary text-sm">Token Budget</span>
+                        <span class="text-cyan font-mono text-xs">∞</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-text-secondary text-sm">Session</span>
+                        <span class="text-warning font-mono text-xs">IDLE</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Agent Waypoints -->
+            <section class="surface-1 p-5" id="agent-waypoints">
+                <h3 class="text-sm font-mono text-text-muted mb-3 uppercase tracking-widest">
+                    Agent Waypoints
+                </h3>
+                <div class="space-y-2">
+                    <div class="surface-2 p-3 glow-cyan">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 bg-cyan"></div>
+                            <span class="text-cyan font-mono text-xs">AGENT_ALPHA</span>
+                        </div>
+                        <p class="text-text-secondary text-xs mt-1">Rationalist Advocate</p>
+                    </div>
+                    <div class="surface-2 p-3 glow-purple">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 bg-purple"></div>
+                            <span class="text-purple font-mono text-xs">AGENT_BETA</span>
+                        </div>
+                        <p class="text-text-secondary text-xs mt-1">Empirical Challenger</p>
+                    </div>
+                    <div class="surface-2 p-3 glow-emerald">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 bg-emerald"></div>
+                            <span class="text-emerald font-mono text-xs">AGENT_GAMMA</span>
+                        </div>
+                        <p class="text-text-secondary text-xs mt-1">Dialectic Mediator</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Design Verification -->
+            <section class="surface-2 p-5" id="design-verification">
+                <h3 class="text-sm font-mono text-text-muted mb-3 uppercase tracking-widest">
+                    Design Verification
+                </h3>
+                <ul class="space-y-2 text-sm">
+                    <li class="flex items-center gap-2">
+                        <span class="text-emerald">✓</span>
+                        <span class="text-text-secondary">No-Line Policy (0px radius)</span>
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <span class="text-emerald">✓</span>
+                        <span class="text-text-secondary">Tonal Layering</span>
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <span class="text-emerald">✓</span>
+                        <span class="text-text-secondary">Neon Accents</span>
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <span class="text-emerald">✓</span>
+                        <span class="text-text-secondary">Asymmetric Layout</span>
+                    </li>
+                    <li class="flex items-center gap-2">
+                        <span class="text-emerald">✓</span>
+                        <span class="text-text-secondary">Monospaced Readouts</span>
+                    </li>
+                </ul>
+            </section>
+
+            <!-- Glow Effects Demo -->
+            <section class="surface-1 p-5" id="pulse-demo">
+                <h3 class="text-sm font-mono text-text-muted mb-3 uppercase tracking-widest">
+                    Kinetic Feedback
+                </h3>
+                <div class="space-y-3">
+                    <div class="surface-2 p-3 pulse-cyan">
+                        <span class="font-mono text-xs text-cyan">● Pulse Cyan</span>
+                    </div>
+                    <div class="surface-2 p-3 pulse-purple">
+                        <span class="font-mono text-xs text-purple">● Pulse Purple</span>
+                    </div>
+                    <div class="surface-2 p-3 pulse-emerald">
+                        <span class="font-mono text-xs text-emerald">● Pulse Emerald</span>
+                    </div>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         FOOTER
+         ═══════════════════════════════════════════════════════════ -->
+    <footer class="mt-8 py-4 text-center">
+        <p class="font-mono text-xs text-text-muted">
+            The Obsidian Observatory · MAS-D v0.1.0 · Design System Verification Page
+        </p>
+    </footer>
+
+</div>
+{% endblock %}
