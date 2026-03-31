@@ -29,7 +29,10 @@
                                class="w-full bg-void text-cyan font-mono text-sm p-3 focus:outline-none focus:ring-1 focus:ring-cyan placeholder:text-text-muted/30"
                                placeholder="sk-..." autocomplete="off">
                         {% if keys.openai %}
-                        <p class="font-mono text-xs text-emerald mt-1">✓ Clé enregistrée</p>
+                        <div class="flex items-center justify-between mt-1">
+                            <p class="font-mono text-xs text-emerald">✓ Clé enregistrée</p>
+                            <button type="submit" name="delete_provider" value="openai" formnovalidate class="font-mono text-xs text-error hover:underline transition-colors focus:outline-none">Supprimer</button>
+                        </div>
                         {% endif %}
                     </div>
 
@@ -42,7 +45,10 @@
                                class="w-full bg-void text-purple font-mono text-sm p-3 focus:outline-none focus:ring-1 focus:ring-purple placeholder:text-text-muted/30"
                                placeholder="AIzaSy..." autocomplete="off">
                         {% if keys.gemini %}
-                        <p class="font-mono text-xs text-emerald mt-1">✓ Clé enregistrée</p>
+                        <div class="flex items-center justify-between mt-1">
+                            <p class="font-mono text-xs text-emerald">✓ Clé enregistrée</p>
+                            <button type="submit" name="delete_provider" value="gemini" formnovalidate class="font-mono text-xs text-error hover:underline transition-colors focus:outline-none">Supprimer</button>
+                        </div>
                         {% endif %}
                     </div>
 
@@ -55,7 +61,10 @@
                                class="w-full bg-void text-emerald font-mono text-sm p-3 focus:outline-none focus:ring-1 focus:ring-emerald placeholder:text-text-muted/30"
                                placeholder="sk-ant-..." autocomplete="off">
                         {% if keys.anthropic %}
-                        <p class="font-mono text-xs text-emerald mt-1">✓ Clé enregistrée</p>
+                        <div class="flex items-center justify-between mt-1">
+                            <p class="font-mono text-xs text-emerald">✓ Clé enregistrée</p>
+                            <button type="submit" name="delete_provider" value="anthropic" formnovalidate class="font-mono text-xs text-error hover:underline transition-colors focus:outline-none">Supprimer</button>
+                        </div>
                         {% endif %}
                     </div>
                 </div>
@@ -71,8 +80,13 @@
                         <p class="font-mono text-xs text-text-muted uppercase tracking-widest">Providers Configurés:</p>
                         <div class="flex flex-wrap gap-2">
                             {% for ck in custom_keys %}
-                            <span class="surface-2 px-3 py-1 font-mono text-xs text-text-primary border border-layer-3 flex items-center gap-2">
-                                <span class="text-emerald">✓</span> {{ ck|upper }}
+                            <span class="surface-2 pl-3 pr-1 py-1 font-mono text-xs text-text-primary border border-layer-3 flex items-center gap-2 group transition-colors hover:border-error/50">
+                                <span class="text-emerald">✓</span> <span class="min-w-[40px]">{{ ck|upper }}</span>
+                                <button type="submit" name="delete_provider" value="{{ ck }}" formnovalidate title="Supprimer {{ ck }}" class="text-text-muted hover:text-error transition-colors focus:outline-none opacity-50 group-hover:opacity-100 p-0.5 ml-1">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
                             </span>
                             {% endfor %}
                         </div>
@@ -218,7 +232,10 @@ document.getElementById('setup-session-form').addEventListener('submit', async f
         feedback.classList.remove('hidden');
         if (response.ok && data.success) {
             feedback.classList.add('border-emerald', 'text-emerald', 'bg-emerald/10');
-            feedback.textContent = '✓ Session ' + data.session_id + ' Armée et Prête.';
+            feedback.innerHTML = '✓ Session ' + data.session_id + ' Armée et Prête.' +
+                '<a href="/session/' + data.session_id + '/roundtable/" ' +
+                'class="ml-4 inline-block bg-cyan text-void px-4 py-1 font-mono text-xs font-semibold hover:bg-cyan/80 transition-colors">' +
+                'CONFIGURE ROUNDTABLE →</a>';
             btnText.textContent = 'ARMÉE';
             btn.classList.remove('animate-pulse', 'shadow-[0_0_15px_rgba(168,85,247,0.6)]');
             btnLoader.classList.remove('animate-ping');

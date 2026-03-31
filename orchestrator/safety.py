@@ -9,15 +9,15 @@ def run_sanity_check(topic: str) -> bool:
     Verifies API keys and performs a dummy/test LLM request to ensure connectivity
     and prevent moderation blocks before the session actually starts.
     """
-    # Prefer OpenAI for sanity check if available, else fallback to something else
-    api_key = ApiKeyStorage.get_key("openai")
-    
-    if not api_key:
-        logger.error("No API key configured for sanity check.")
-        return False
-        
     if not topic or not topic.strip():
         logger.error("Empty topic provided.")
+        return False
+        
+    # Check if ANY API key is configured
+    has_keys = ApiKeyStorage.objects.exists()
+    
+    if not has_keys:
+        logger.error("No API key configured for sanity check.")
         return False
         
     # TODO: Perform actual API call to validate the topic

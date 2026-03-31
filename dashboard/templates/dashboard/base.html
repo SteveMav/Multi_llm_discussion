@@ -11,6 +11,26 @@
 </head>
 
 <body class="min-h-screen">
+    <!-- Obsidian Observatory Navbar -->
+    <nav class="bg-layer-1 text-text-primary px-6 py-4 flex items-center justify-between shadow-lg">
+        <div class="flex items-center space-x-12">
+            <a href="/" class="font-headline text-xl font-bold text-cyan tracking-wider hover:text-cyan/80 transition-colors uppercase">
+                MAS-D
+            </a>
+            <div class="flex space-x-6">
+                <a href="/" class="font-mono text-xs uppercase tracking-widest hover:text-cyan transition-colors">
+                    Observatory
+                </a>
+                <a href="/setup/" class="font-mono text-xs uppercase tracking-widest hover:text-cyan transition-colors">
+                    Setup & APIs
+                </a>
+            </div>
+        </div>
+        <div class="font-mono text-[10px] text-text-muted uppercase tracking-[0.2em]">
+            System Status: <span class="text-emerald">ACTIVE</span>
+        </div>
+    </nav>
+
     {% block content %}{% endblock %}
     {% block extra_scripts %}{% endblock %}
 </body>

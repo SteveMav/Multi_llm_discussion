@@ -1,7 +1,8 @@
 from django.views.generic import TemplateView
-from django.shortcuts import redirect
+from django.shortcuts import redirect, get_object_or_404
 from django.contrib import messages
 from .models import ApiKeyStorage
+
 
 class HomeView(TemplateView):
     """Design system verification page — The Obsidian Observatory."""
@@ -21,6 +22,12 @@ class SetupView(TemplateView):
         return context
 
     def post(self, request, *args, **kwargs):
+        delete_provider = request.POST.get('delete_provider')
+        if delete_provider:
+            ApiKeyStorage.objects.filter(provider=delete_provider).delete()
+            messages.success(request, f"✓ Provider {delete_provider.upper()} supprimé.")
+            return redirect('setup')
+
         main_providers = ['openai', 'gemini', 'anthropic']
         updated_count = 0
         
@@ -53,11 +60,20 @@ class SetupView(TemplateView):
             
         return redirect('dashboard:setup')
 
+
 import json
 from django.http import JsonResponse
 from django.views import View
 from orchestrator.safety import run_sanity_check
-from .models import Session
+from orchestrator.genetic import (
+    ARCHETYPES,
+    MODERATOR,
+    MIN_AGENTS,
+    MAX_AGENTS,
+    get_archetype_choices,
+)
+from .models import Session, SessionAgent
+
 
 class SessionCreateAPIView(View):
     """API view to create a new debate session."""
@@ -92,4 +108,200 @@ class SessionCreateAPIView(View):
             return JsonResponse({"success": False, "error": "Invalid JSON."}, status=400)
         except Exception as e:
             return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+
+class RoundtableView(TemplateView):
+    """Roundtable agent configuration page."""
+    template_name = 'dashboard/roundtable.html'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        session_id = self.kwargs.get('session_id')
+        session = get_object_or_404(Session, pk=session_id)
+        context['session'] = session
+        context['archetypes'] = ARCHETYPES
+        context['moderator'] = MODERATOR
+        context['min_agents'] = MIN_AGENTS
+        context['max_agents'] = MAX_AGENTS
+        # Available providers = configured API keys
+        context['providers'] = list(
+            ApiKeyStorage.objects.values_list('provider', flat=True)
+        )
+        # Existing agents for this session
+        context['existing_agents'] = list(
+            session.agents.values('slot_number', 'provider', 'archetype')
+        )
+        return context
+
+
+class RoundtableConfigAPIView(View):
+    """API endpoint to configure agents for a session's roundtable.
+
+    Expects JSON payload::
+
+        {
+            "session_id": 1,
+            "agents": [
+                {"provider": "openai", "archetype": "skeptic"},
+                {"provider": "gemini", "archetype": "optimist"},
+                ...
+            ]
+        }
+
+    Constraints enforced:
+    - Between 2 and 4 agents (inclusive).
+    - Each archetype may appear at most once per session.
+    - Each provider must have a registered API key.
+    - The Moderator Architect is always implicitly included (not stored
+      as a SessionAgent — it is a protocol-level constant).
+    """
+
+    def post(self, request, *args, **kwargs):
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse(
+                {"success": False, "error": "Invalid JSON."},
+                status=400,
+            )
+
+        session_id = data.get("session_id")
+        agents_data = data.get("agents", [])
+
+        # ── Basic validation ──────────────────────────────
+        if not session_id:
+            return JsonResponse(
+                {"success": False, "error": "Missing session_id."},
+                status=400,
+            )
+
+        if not isinstance(agents_data, list):
+            return JsonResponse(
+                {"success": False, "error": "'agents' must be an array."},
+                status=400,
+            )
+
+        agent_count = len(agents_data)
+        if agent_count < MIN_AGENTS or agent_count > MAX_AGENTS:
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": (
+                        f"You must configure between {MIN_AGENTS} and "
+                        f"{MAX_AGENTS} agents (received {agent_count})."
+                    ),
+                },
+                status=400,
+            )
+
+        # ── Session lookup ────────────────────────────────
+        try:
+            session = Session.objects.get(pk=session_id)
+        except Session.DoesNotExist:
+            return JsonResponse(
+                {"success": False, "error": f"Session {session_id} not found."},
+                status=404,
+            )
+
+        # ── Per-agent validation ──────────────────────────
+        valid_archetype_keys = set(ARCHETYPES.keys())
+        configured_providers = set(
+            ApiKeyStorage.objects.values_list("provider", flat=True)
+        )
+        seen_archetypes: set[str] = set()
+        validated_agents: list[dict] = []
+
+        for idx, agent in enumerate(agents_data, start=1):
+            provider = agent.get("provider", "").strip().lower()
+            archetype = agent.get("archetype", "").strip().lower()
+
+            if not provider or not archetype:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": f"Agent #{idx}: provider and archetype are required.",
+                    },
+                    status=400,
+                )
+
+            if archetype not in valid_archetype_keys:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": (
+                            f"Agent #{idx}: unknown archetype '{archetype}'. "
+                            f"Valid: {', '.join(sorted(valid_archetype_keys))}."
+                        ),
+                    },
+                    status=400,
+                )
+
+            if archetype in seen_archetypes:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": (
+                            f"Agent #{idx}: archetype '{archetype}' is already "
+                            f"assigned to another agent."
+                        ),
+                    },
+                    status=400,
+                )
+
+            if provider not in configured_providers:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": (
+                            f"Agent #{idx}: no API key configured for "
+                            f"provider '{provider}'."
+                        ),
+                    },
+                    status=400,
+                )
+
+            seen_archetypes.add(archetype)
+            validated_agents.append(
+                {
+                    "provider": provider,
+                    "archetype": archetype,
+                    "slot_number": idx,
+                }
+            )
+
+        # ── Persist ───────────────────────────────────────
+        # Clear previous configuration for this session
+        session.agents.all().delete()
+
+        created_agents = SessionAgent.objects.bulk_create(
+            [
+                SessionAgent(session=session, **agent_data)
+                for agent_data in validated_agents
+            ]
+        )
+
+        # Update session status
+        session.status = "CONFIGURING"
+        session.save(update_fields=["status", "updated_at"])
+
+        # ── Response ──────────────────────────────────────
+        return JsonResponse(
+            {
+                "success": True,
+                "session_id": session.id,
+                "agents_configured": len(created_agents),
+                "moderator_included": True,
+                "moderator_label": MODERATOR["label"],
+                "agents": [
+                    {
+                        "slot": a.slot_number,
+                        "provider": a.provider,
+                        "archetype": a.archetype,
+                        "archetype_label": ARCHETYPES[a.archetype]["label"],
+                    }
+                    for a in created_agents
+                ],
+            },
+            status=201,
+        )
 
