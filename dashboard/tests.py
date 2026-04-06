@@ -645,3 +645,457 @@ class RoundtableViewTests(TestCase):
         resp = self.client.get('/session/99999/roundtable/')
         self.assertEqual(resp.status_code, 404)
 
+
+# ════════════════════════════════════════════════════════════
+#  Story 2.2 — The 3-Phase State Machine (Protocol)
+# ════════════════════════════════════════════════════════════
+
+import asyncio
+import inspect
+
+
+def _run_protocol_sync(agents, topic, confrontation_rounds=2):
+    """Helper: collect all events from run_protocol into a list (sync wrapper)."""
+    from orchestrator.protocol import run_protocol
+
+    async def _collect():
+        events = []
+        async for event in run_protocol(agents, topic, confrontation_rounds):
+            events.append(event)
+        return events
+
+    return asyncio.run(_collect())
+
+
+class ProtocolStateMachineTests(TestCase):
+    """Story 2.2 — validate the 3-phase debate protocol state machine."""
+
+    # ── Shared fixtures ──────────────────────────────────────
+
+    AGENTS_2 = [
+        {"provider": "openai", "archetype": "skeptic", "slot_number": 1},
+        {"provider": "gemini", "archetype": "optimist", "slot_number": 2},
+    ]
+    AGENTS_3 = [
+        {"provider": "openai", "archetype": "skeptic", "slot_number": 1},
+        {"provider": "gemini", "archetype": "optimist", "slot_number": 2},
+        {"provider": "anthropic", "archetype": "pragmatist", "slot_number": 3},
+    ]
+    TOPIC = "Is AI beneficial to humanity?"
+
+    # ── Tests ────────────────────────────────────────────────
+
+    def test_phase_order_exposition_first(self):
+        """First system event must announce EXPOSITION."""
+        events = _run_protocol_sync(self.AGENTS_2, self.TOPIC)
+        system_events = [e for e in events if e["type"] == "system"]
+        self.assertTrue(len(system_events) >= 1)
+        self.assertIn("EXPOSITION", system_events[0]["content"])
+
+    def test_all_agents_speak_in_exposition(self):
+        """Each agent must produce a 'speech' event during EXPOSITION (before CONFRONTATION)."""
+        events = _run_protocol_sync(self.AGENTS_3, self.TOPIC)
+        # Exposition speeches appear before any CONFRONTATION system event
+        exposition_speeches = []
+        confrontation_started = False
+        for e in events:
+            if e["type"] == "system" and "CONFRONTATION" in e["content"]:
+                confrontation_started = True
+            if not confrontation_started and e["type"] == "speech":
+                exposition_speeches.append(e)
+        self.assertEqual(len(exposition_speeches), 3)
+
+    def test_confrontation_rounds_respected(self):
+        """Number of CONFRONTATION system events must equal confrontation_rounds."""
+        events = _run_protocol_sync(self.AGENTS_2, self.TOPIC, confrontation_rounds=3)
+        confrontation_events = [
+            e for e in events
+            if e["type"] == "system" and "CONFRONTATION" in e["content"]
+        ]
+        self.assertEqual(len(confrontation_events), 3)
+
+    def test_resolution_phase_reached(self):
+        """A RESOLUTION system event must be emitted, followed by speech events."""
+        events = _run_protocol_sync(self.AGENTS_2, self.TOPIC)
+        resolution_idx = next(
+            (i for i, e in enumerate(events)
+             if e["type"] == "system" and "RESOLUTION" in e["content"]),
+            None,
+        )
+        self.assertIsNotNone(resolution_idx, "RESOLUTION phase not found in events")
+        # At least one speech event must follow RESOLUTION
+        post_resolution = events[resolution_idx + 1:]
+        speech_events = [e for e in post_resolution if e["type"] == "speech"]
+        self.assertGreater(len(speech_events), 0)
+
+    def test_done_event_is_last(self):
+        """The very last event must be of type 'done'."""
+        events = _run_protocol_sync(self.AGENTS_2, self.TOPIC)
+        self.assertTrue(len(events) > 0)
+        self.assertEqual(events[-1]["type"], "done")
+
+    def test_agent_id_matches_archetype(self):
+        """Speech events from the skeptic agent must carry agent_id == 'skeptic'."""
+        events = _run_protocol_sync(self.AGENTS_2, self.TOPIC)
+        skeptic_speeches = [
+            e for e in events
+            if e["type"] == "speech" and e["agent_id"] == "skeptic"
+        ]
+        self.assertGreater(len(skeptic_speeches), 0,
+                           "No speech events found for 'skeptic' agent")
+        for e in skeptic_speeches:
+            self.assertEqual(e["agent_id"], "skeptic")
+
+    def test_minimum_total_event_count(self):
+        """With 2 agents and 2 confrontation rounds the event count must be >= 10.
+
+        Minimum accounting:
+          1 system  (EXPOSITION)
+          2 thought + 2 speech = 4  (EXPOSITION)
+          2 system  (CONFRONTATION rounds)
+          2×2 thought + 2×2 speech = 8  (CONFRONTATION)
+          1 system  (RESOLUTION)
+          2 thought + 2 speech = 4  (RESOLUTION)
+          1 done
+          Total = 21, well above the 10-event floor.
+        """
+        events = _run_protocol_sync(self.AGENTS_2, self.TOPIC, confrontation_rounds=2)
+        self.assertGreaterEqual(len(events), 10)
+
+    def test_no_django_imports_in_protocol(self):
+        """protocol.py must NOT import from django or dashboard."""
+        import orchestrator.protocol as mod
+        source = inspect.getsource(mod)
+        self.assertNotIn("from django", source,
+                         "orchestrator.protocol must not import from django")
+        self.assertNotIn("import django", source,
+                         "orchestrator.protocol must not import django")
+        self.assertNotIn("from dashboard", source,
+                         "orchestrator.protocol must not import from dashboard")
+
+    def test_asyncio_sleep_not_time_sleep(self):
+        """protocol.py must use asyncio.sleep, never time.sleep."""
+        import orchestrator.protocol as mod
+        source = inspect.getsource(mod)
+        self.assertNotIn("time.sleep", source,
+                         "time.sleep is forbidden — use asyncio.sleep(0)")
+        self.assertIn("asyncio.sleep", source,
+                      "asyncio.sleep(0) must be present to yield the ASGI event loop")
+
+
+# ════════════════════════════════════════════════════════════
+#  Story 2.3 — Moderator Architect & Rational Adherence
+# ════════════════════════════════════════════════════════════
+
+
+def _run_engine_sync(agents, topic, confrontation_rounds=2):
+    """Helper: collect all events from run_debate_engine into a list (sync wrapper)."""
+    from orchestrator.engine import run_debate_engine
+
+    async def _collect():
+        events = []
+        async for event in run_debate_engine(agents, topic, confrontation_rounds):
+            events.append(event)
+        return events
+
+    return asyncio.run(_collect())
+
+
+class ModeratorEngineTests(TestCase):
+    """Story 2.3 — validate ConcessionDetector, ModeratorPromptBuilder,
+    prioritise_speaking_order, and the run_debate_engine façade."""
+
+    # ── Shared fixtures ──────────────────────────────────────
+
+    AGENTS_2 = [
+        {"provider": "openai", "archetype": "skeptic", "slot_number": 1},
+        {"provider": "gemini", "archetype": "optimist", "slot_number": 2},
+    ]
+    TOPIC = "Is AI beneficial to humanity?"
+
+    # ── ConcessionDetector tests ─────────────────────────────
+
+    def test_concession_detector_detects_english_phrase(self):
+        """Detector identifies an English concession phrase."""
+        from orchestrator.engine import ConcessionDetector
+        detector = ConcessionDetector()
+        self.assertTrue(detector.detect("You've made a point, I must admit."))
+
+    def test_concession_detector_detects_french_phrase(self):
+        """Detector identifies a French concession phrase."""
+        from orchestrator.engine import ConcessionDetector
+        detector = ConcessionDetector()
+        self.assertTrue(detector.detect("tu as marqué un point sur ce sujet."))
+
+    def test_concession_detector_rejects_non_concession(self):
+        """Detector returns False for a non-concession statement."""
+        from orchestrator.engine import ConcessionDetector
+        detector = ConcessionDetector()
+        self.assertFalse(detector.detect("I strongly disagree with your argument."))
+
+    def test_concession_detector_case_insensitive(self):
+        """Detector is case-insensitive."""
+        from orchestrator.engine import ConcessionDetector
+        detector = ConcessionDetector()
+        self.assertTrue(detector.detect("YOU ARE RIGHT about that specific claim."))
+
+    # ── ModeratorPromptBuilder tests ─────────────────────────
+
+    def test_moderator_prompt_includes_archetype_system_prompt(self):
+        """Built prompt contains the archetype's system_prompt content and the preamble."""
+        from orchestrator.engine import ModeratorPromptBuilder
+        from orchestrator.protocol import DebatePhase
+        builder = ModeratorPromptBuilder()
+        prompt = builder.build("skeptic", [], None, DebatePhase.CONFRONTATION)
+        # genetic.py skeptic system_prompt contains "Skeptic"
+        self.assertIn("Skeptic", prompt)
+        self.assertIn("RATIONAL ADHERENCE", prompt)
+
+    def test_moderator_prompt_includes_history_summary(self):
+        """Built prompt references recent history entries."""
+        from orchestrator.engine import ModeratorPromptBuilder
+        from orchestrator.protocol import DebatePhase
+        history = [
+            {
+                "agent_id": "optimist",
+                "role": "agent",
+                "content": "AI is the future.",
+                "phase": "CONFRONTATION",
+                "round_num": 1,
+            }
+        ]
+        builder = ModeratorPromptBuilder()
+        prompt = builder.build("skeptic", history, "optimist", DebatePhase.CONFRONTATION)
+        # Either the agent_id or the content must appear in the prompt
+        self.assertTrue(
+            "optimist" in prompt or "AI is the future" in prompt[:500],
+            "History not referenced in built prompt",
+        )
+
+    def test_moderator_prompt_includes_previous_speaker(self):
+        """Built prompt mentions the previous speaker."""
+        from orchestrator.engine import ModeratorPromptBuilder
+        from orchestrator.protocol import DebatePhase
+        builder = ModeratorPromptBuilder()
+        prompt = builder.build("skeptic", [], "optimist", DebatePhase.CONFRONTATION)
+        self.assertTrue(
+            "optimist" in prompt.lower() or "L'Optimiste" in prompt,
+            "Previous speaker not mentioned in built prompt",
+        )
+
+    # ── prioritise_speaking_order tests ─────────────────────
+
+    def test_speaking_order_exposition_uses_slot_order(self):
+        """EXPOSITION phase returns agents sorted by slot_number ascending."""
+        from orchestrator.engine import prioritise_speaking_order
+        from orchestrator.protocol import DebatePhase
+        agents = [
+            {"provider": "openai", "archetype": "optimist", "slot_number": 2},
+            {"provider": "gemini", "archetype": "skeptic", "slot_number": 1},
+            {"provider": "anthropic", "archetype": "pragmatist", "slot_number": 3},
+        ]
+        result = prioritise_speaking_order(agents, [], DebatePhase.EXPOSITION)
+        self.assertEqual(result[0]["slot_number"], 1)
+        self.assertEqual(result[1]["slot_number"], 2)
+
+    def test_speaking_order_resolution_is_reversed(self):
+        """RESOLUTION phase returns agents in reverse slot_number order."""
+        from orchestrator.engine import prioritise_speaking_order
+        from orchestrator.protocol import DebatePhase
+        agents = [
+            {"provider": "openai", "archetype": "skeptic", "slot_number": 1},
+            {"provider": "gemini", "archetype": "optimist", "slot_number": 2},
+            {"provider": "anthropic", "archetype": "pragmatist", "slot_number": 3},
+        ]
+        result = prioritise_speaking_order(agents, [], DebatePhase.RESOLUTION)
+        self.assertEqual(result[0]["slot_number"], 3)
+
+    def test_speaking_order_confrontation_empty_history_falls_back(self):
+        """CONFRONTATION with empty history falls back to slot_number ascending."""
+        from orchestrator.engine import prioritise_speaking_order
+        from orchestrator.protocol import DebatePhase
+        result = prioritise_speaking_order(
+            self.AGENTS_2, [], DebatePhase.CONFRONTATION
+        )
+        self.assertEqual(result[0]["slot_number"], 1)
+
+    # ── run_debate_engine tests ──────────────────────────────
+
+    def test_engine_yields_done_last(self):
+        """The very last event from run_debate_engine must be of type 'done'."""
+        events = _run_engine_sync(self.AGENTS_2, self.TOPIC)
+        self.assertTrue(len(events) > 0)
+        self.assertEqual(events[-1]["type"], "done")
+
+    def test_engine_no_django_imports(self):
+        """engine.py must NOT import from django or dashboard."""
+        import orchestrator.engine as mod
+        source = inspect.getsource(mod)
+        self.assertNotIn("from django", source,
+                         "orchestrator.engine must not import from django")
+        self.assertNotIn("import django", source,
+                         "orchestrator.engine must not import django")
+
+    def test_engine_uses_asyncio_sleep_not_time_sleep(self):
+        """engine.py must use asyncio.sleep, never time.sleep."""
+        import orchestrator.engine as mod
+        source = inspect.getsource(mod)
+        self.assertNotIn("time.sleep", source,
+                         "time.sleep is forbidden — use asyncio.sleep(0)")
+        self.assertIn("asyncio.sleep", source,
+                      "asyncio.sleep(0) must be present to yield the ASGI event loop")
+
+# ════════════════════════════════════════════════════════════
+#  Story 3.1 — Core SSE Engine & Live Streaming
+# ════════════════════════════════════════════════════════════
+
+class CockpitViewTests(TestCase):
+    """Story 3.1 — Verify cockpit view rendering and components."""
+
+    def setUp(self):
+        self.client = Client()
+        self.session = Session.objects.create(
+            title="Cockpit Test", topic="Live Stream Topic", token_budget=6000
+        )
+        # Register API keys for providers
+        ApiKeyStorage.objects.create(provider="openai", api_key="sk-test-1")
+        ApiKeyStorage.objects.create(provider="gemini", api_key="sk-test-2")
+
+        SessionAgent.objects.create(
+            session=self.session, provider="openai",
+            archetype="skeptic", slot_number=1,
+        )
+        SessionAgent.objects.create(
+            session=self.session, provider="gemini",
+            archetype="optimist", slot_number=2,
+        )
+
+    def test_cockpit_page_status_200(self):
+        resp = self.client.get(f'/session/{self.session.id}/cockpit/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_cockpit_uses_correct_template(self):
+        resp = self.client.get(f'/session/{self.session.id}/cockpit/')
+        self.assertTemplateUsed(resp, 'dashboard/cockpit.html')
+
+    def test_cockpit_contains_session_info(self):
+        resp = self.client.get(f'/session/{self.session.id}/cockpit/')
+        self.assertContains(resp, 'Cockpit Test')
+        self.assertContains(resp, 'Live Stream Topic')
+
+    def test_cockpit_contains_stream_url_data_attr(self):
+        resp = self.client.get(f'/session/{self.session.id}/cockpit/')
+        self.assertContains(resp, 'data-stream-url=')
+
+    def test_cockpit_contains_event_stream_log_div(self):
+        resp = self.client.get(f'/session/{self.session.id}/cockpit/')
+        self.assertContains(resp, 'id="event-stream-log"')
+
+    def test_cockpit_contains_kill_switch_button(self):
+        resp = self.client.get(f'/session/{self.session.id}/cockpit/')
+        self.assertContains(resp, 'id="kill-switch-btn"')
+
+    def test_cockpit_404_for_invalid_session(self):
+        resp = self.client.get('/session/99999/cockpit/')
+        self.assertEqual(resp.status_code, 404)
+
+
+class StreamingSSETests(TestCase):
+    """Story 3.1 — Verify SSE event stream correctly wraps engine execution."""
+
+    def setUp(self):
+        self.client = Client()
+        self.session = Session.objects.create(
+            title="Stream Test", topic="Streaming Event Test Topic", token_budget=7000,
+            status="CONFIGURING"
+        )
+        ApiKeyStorage.objects.create(provider="openai", api_key="sk-test-1")
+        ApiKeyStorage.objects.create(provider="gemini", api_key="sk-test-2")
+
+        SessionAgent.objects.create(
+            session=self.session, provider="openai",
+            archetype="skeptic", slot_number=1,
+        )
+        SessionAgent.objects.create(
+            session=self.session, provider="gemini",
+            archetype="optimist", slot_number=2,
+        )
+
+    def _collect_sse(self, session_id):
+        """Collect all SSE events from the stream endpoint as a list of dicts."""
+        import json
+        import asyncio
+        response = self.client.get(f"/session/{session_id}/stream/", HTTP_ACCEPT="text/event-stream")
+        
+        async def _consume():
+            chunks = []
+            if hasattr(response.streaming_content, "__aiter__"):
+                async for chunk in response.streaming_content:
+                    chunks.append(chunk)
+            else:
+                for chunk in response.streaming_content:
+                    chunks.append(chunk)
+            return chunks
+
+        raw_chunks = asyncio.run(_consume())
+        events = []
+        for chunk in raw_chunks:
+            if isinstance(chunk, bytes):
+                chunk = chunk.decode("utf-8")
+            for line in chunk.split("\n"):
+                line = line.strip()
+                if line.startswith("data: "):
+                    payload = line[len("data: "):]
+                    try:
+                        events.append(json.loads(payload))
+                    except json.JSONDecodeError:
+                        pass
+        return events
+
+    def test_stream_returns_200(self):
+        resp = self.client.get(f"/session/{self.session.id}/stream/", HTTP_ACCEPT="text/event-stream")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_stream_content_type_is_event_stream(self):
+        resp = self.client.get(f"/session/{self.session.id}/stream/", HTTP_ACCEPT="text/event-stream")
+        self.assertTrue(resp["Content-Type"].startswith("text/event-stream"))
+
+    def test_stream_yields_events(self):
+        events = self._collect_sse(self.session.id)
+        self.assertGreater(len(events), 0)
+
+    def test_stream_events_have_required_fields(self):
+        events = self._collect_sse(self.session.id)
+        for event in events:
+            self.assertIn("type", event)
+            self.assertIn("agent_id", event)
+            self.assertIn("content", event)
+
+    def test_stream_last_event_is_done(self):
+        events = self._collect_sse(self.session.id)
+        self.assertEqual(events[-1]["type"], "done")
+
+    def test_stream_contains_exposition_system_event(self):
+        events = self._collect_sse(self.session.id)
+        system_events = [e for e in events if e["type"] == "system"]
+        self.assertTrue(any("EXPOSITION" in e["content"] for e in system_events))
+
+    def test_stream_updates_session_status_to_running(self):
+        self._collect_sse(self.session.id)
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, "RUNNING")
+
+    def test_stream_404_for_invalid_session(self):
+        events = self._collect_sse(99999)
+        self.assertTrue(len(events) > 0)
+        self.assertEqual(events[0]["type"], "error")
+        self.assertIn("not found", events[0]["content"].lower())
+
+    def test_stream_no_agents_returns_error_event(self):
+        empty_session = Session.objects.create(
+            title="Empty", topic="Empty Topic", token_budget=1000
+        )
+        events = self._collect_sse(empty_session.id)
+        self.assertTrue(len(events) > 0)
+        self.assertEqual(events[0]["type"], "error")
+        self.assertIn("no agents", events[0]["content"].lower())

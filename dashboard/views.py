@@ -1,7 +1,23 @@
-from django.views.generic import TemplateView
-from django.shortcuts import redirect, get_object_or_404
+import json
+
+from asgiref.sync import sync_to_async
 from django.contrib import messages
-from .models import ApiKeyStorage
+from django.http import Http404, JsonResponse, StreamingHttpResponse
+from django.shortcuts import redirect, render, get_object_or_404
+from django.urls import reverse
+from django.views import View
+from django.views.generic import TemplateView
+
+from orchestrator.genetic import (
+    ARCHETYPES,
+    MODERATOR,
+    MIN_AGENTS,
+    MAX_AGENTS,
+    get_archetype_choices,
+)
+from orchestrator.safety import run_sanity_check
+from orchestrator.engine import run_debate_engine
+from .models import ApiKeyStorage, Session, SessionAgent
 
 
 class HomeView(TemplateView):
@@ -61,18 +77,7 @@ class SetupView(TemplateView):
         return redirect('dashboard:setup')
 
 
-import json
-from django.http import JsonResponse
-from django.views import View
-from orchestrator.safety import run_sanity_check
-from orchestrator.genetic import (
-    ARCHETYPES,
-    MODERATOR,
-    MIN_AGENTS,
-    MAX_AGENTS,
-    get_archetype_choices,
-)
-from .models import Session, SessionAgent
+
 
 
 class SessionCreateAPIView(View):
@@ -305,3 +310,68 @@ class RoundtableConfigAPIView(View):
             status=201,
         )
 
+
+async def cockpit_view(request, session_id):
+    """
+    Renders the cockpit shell template for session_id.
+    GET /session/<session_id>/cockpit/
+    """
+    try:
+        session = await sync_to_async(Session.objects.get)(id=session_id)
+    except Session.DoesNotExist:
+        raise Http404(f"Session {session_id} not found.")
+
+    agents_qs = await sync_to_async(list)(session.agents.all())
+    
+    stream_url = reverse("dashboard:stream-debate", args=[session_id])
+    
+    context = {
+        "session": session,
+        "agents": agents_qs,
+        "stream_url": stream_url,
+        "ARCHETYPES": ARCHETYPES,
+    }
+    return render(request, "dashboard/cockpit.html", context)
+
+
+async def stream_debate(request, session_id):
+    """
+    Async SSE streaming view.
+    GET /session/<session_id>/stream/
+    """
+    try:
+        session = await sync_to_async(Session.objects.get)(id=session_id)
+    except Session.DoesNotExist:
+        async def error_stream():
+            yield f"data: {json.dumps({'type': 'error', 'agent_id': 'system', 'content': 'Session not found.'})}\n\n"
+        return StreamingHttpResponse(error_stream(), content_type="text/event-stream")
+
+    agents_qs = await sync_to_async(list)(session.agents.all())
+    if not agents_qs:
+        async def error_stream():
+            yield f"data: {json.dumps({'type': 'error', 'agent_id': 'system', 'content': 'No agents configured for this session.'})}\n\n"
+        return StreamingHttpResponse(error_stream(), content_type="text/event-stream")
+
+    agents = [
+        {
+            "provider": a.provider,
+            "archetype": a.archetype,
+            "slot_number": a.slot_number,
+        }
+        for a in agents_qs
+    ]
+
+    session.status = "RUNNING"
+    await sync_to_async(session.save)(update_fields=["status", "updated_at"])
+
+    async def event_stream():
+        try:
+            async for event in run_debate_engine(agents, session.topic, confrontation_rounds=2):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'agent_id': 'system', 'content': f'Engine exception: {str(e)}'})}\n\n"
+
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response

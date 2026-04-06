@@ -34,6 +34,7 @@ class Session(models.Model):
     STATUS_CHOICES = [
         ('READY', 'Ready'),
         ('CONFIGURING', 'Configuring'),
+        ('RUNNING', 'Running'),
         ('ABORTED', 'Aborted'),
         ('SUCCESS', 'Success'),
     ]
