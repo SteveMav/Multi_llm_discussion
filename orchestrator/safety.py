@@ -1,7 +1,25 @@
 import logging
+import asyncio
 from dashboard.models import ApiKeyStorage
 
 logger = logging.getLogger(__name__)
+
+# Dictionary to hold abort events mapped by session_id
+ABORT_EVENTS: dict[int, asyncio.Event] = {}
+
+def get_abort_event(session_id: int) -> asyncio.Event:
+    if session_id not in ABORT_EVENTS:
+        ABORT_EVENTS[session_id] = asyncio.Event()
+    return ABORT_EVENTS[session_id]
+
+def set_abort_event(session_id: int) -> None:
+    if session_id not in ABORT_EVENTS:
+        ABORT_EVENTS[session_id] = asyncio.Event()
+    ABORT_EVENTS[session_id].set()
+
+def clear_abort_event(session_id: int) -> None:
+    if session_id in ABORT_EVENTS:
+        ABORT_EVENTS.pop(session_id, None)
 
 def run_sanity_check(topic: str) -> bool:
     """

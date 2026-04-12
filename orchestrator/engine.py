@@ -228,6 +228,7 @@ async def run_debate_engine(
     agents: list[dict],
     topic: str,
     confrontation_rounds: int = 2,
+    session_id: int | None = None,
 ) -> AsyncGenerator[dict, None]:
     """
     High-level async generator that wraps ``run_protocol()`` and applies
@@ -261,71 +262,87 @@ async def run_debate_engine(
     history: list[dict] = []
     previous_speaker_id: str | None = None
 
-    async for event in run_protocol(agents, topic, confrontation_rounds):
-        event_type = event.get("type")
-        agent_id = event.get("agent_id", "")
+    from orchestrator.safety import get_abort_event, clear_abort_event
+    abort_event = get_abort_event(session_id) if session_id is not None else None
 
-        if event_type in ("thought", "speech"):
-            # Determine current phase from the history of system events
-            # (we infer phase from the last system event hint)
-            current_phase = _infer_phase(history)
+    try:
+        async for event in run_protocol(agents, topic, confrontation_rounds):
+            # Always yield an ABORTED error event if the kill switch was triggered
+            if abort_event and abort_event.is_set():
+                yield {
+                    "type": "error",
+                    "agent_id": "system",
+                    "content": "Session ABORTED due to Kill-Switch trigger."
+                }
+                break
 
-            # 1. Build Master Prompt summary (1-line for SSE readability)
-            master_prompt = builder.build(
-                archetype_key=agent_id,
-                history=history,
-                previous_speaker_id=previous_speaker_id,
-                phase=current_phase,
-            )
-            prompt_summary = (
-                f"[Moderator] Master Prompt active for {agent_id} "
-                f"({current_phase.value}) — {len(master_prompt)} chars. "
-                "Rational Adherence rule injected."
-            )
+            event_type = event.get("type")
+            agent_id = event.get("agent_id", "")
 
-            # 2. Yield system event with prompt summary
-            yield {
-                "type": "system",
-                "agent_id": "moderator",
-                "content": prompt_summary,
-            }
-            await asyncio.sleep(0)
+            if event_type in ("thought", "speech"):
+                # Determine current phase from the history of system events
+                # (we infer phase from the last system event hint)
+                current_phase = _infer_phase(history)
 
-            # 3. Yield original event
-            yield event
-            await asyncio.sleep(0)
+                # 1. Build Master Prompt summary (1-line for SSE readability)
+                master_prompt = builder.build(
+                    archetype_key=agent_id,
+                    history=history,
+                    previous_speaker_id=previous_speaker_id,
+                    phase=current_phase,
+                )
+                prompt_summary = (
+                    f"[Moderator] Master Prompt active for {agent_id} "
+                    f"({current_phase.value}) — {len(master_prompt)} chars. "
+                    "Rational Adherence rule injected."
+                )
 
-            # 4–6. Only for speech events
-            if event_type == "speech":
-                content = event.get("content", "")
+                # 2. Yield system event with prompt summary
+                yield {
+                    "type": "system",
+                    "agent_id": "moderator",
+                    "content": prompt_summary,
+                }
+                await asyncio.sleep(0)
 
-                # 4. Detect concession
-                if detector.detect(content):
-                    # 5. Yield concession notice
-                    yield {
-                        "type": "system",
-                        "agent_id": "moderator",
-                        "content": (
-                            f"[Moderator] Rational Adherence detected: "
-                            f"agent '{agent_id}' has issued a concession."
-                        ),
-                    }
-                    await asyncio.sleep(0)
+                # 3. Yield original event
+                yield event
+                await asyncio.sleep(0)
 
-                # 6. Append speech to history
-                history.append({
-                    "agent_id": agent_id,
-                    "role": "agent",
-                    "content": content,
-                    "phase": current_phase.value,
-                    "round_num": _count_phase_rounds(history, current_phase),
-                })
-                previous_speaker_id = agent_id
+                # 4–6. Only for speech events
+                if event_type == "speech":
+                    content = event.get("content", "")
 
-        else:
-            # "system", "phase_transition", "done", "error" — pass through
-            yield event
-            await asyncio.sleep(0)
+                    # 4. Detect concession
+                    if detector.detect(content):
+                        # 5. Yield concession notice
+                        yield {
+                            "type": "system",
+                            "agent_id": "moderator",
+                            "content": (
+                                f"[Moderator] Rational Adherence detected: "
+                                f"agent '{agent_id}' has issued a concession."
+                            ),
+                        }
+                        await asyncio.sleep(0)
+
+                    # 6. Append speech to history
+                    history.append({
+                        "agent_id": agent_id,
+                        "role": "agent",
+                        "content": content,
+                        "phase": current_phase.value,
+                        "round_num": _count_phase_rounds(history, current_phase),
+                    })
+                    previous_speaker_id = agent_id
+
+            else:
+                # "system", "phase_transition", "done", "error" — pass through
+                yield event
+                await asyncio.sleep(0)
+    finally:
+        if session_id is not None:
+            clear_abort_event(session_id)
 
 
 # ────────────────────────────────────────────────────────────

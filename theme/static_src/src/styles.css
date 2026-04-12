@@ -139,6 +139,10 @@
     animation: pulse-glow 2s ease-in-out infinite;
     --pulse-color: rgba(165, 255, 184, 0.4);
   }
+
+  .pulse-active {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
 }
 
 /* ────────────────────────────────────────────────────────────

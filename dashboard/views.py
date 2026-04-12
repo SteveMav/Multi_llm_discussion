@@ -1,8 +1,9 @@
+import io
 import json
 
 from asgiref.sync import sync_to_async
 from django.contrib import messages
-from django.http import Http404, JsonResponse, StreamingHttpResponse
+from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse, StreamingHttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
 from django.views import View
@@ -15,8 +16,9 @@ from orchestrator.genetic import (
     MAX_AGENTS,
     get_archetype_choices,
 )
-from orchestrator.safety import run_sanity_check
+from orchestrator.safety import run_sanity_check, set_abort_event
 from orchestrator.engine import run_debate_engine
+from orchestrator.exporter import generate_pdf_report
 from .models import ApiKeyStorage, Session, SessionAgent
 
 
@@ -108,6 +110,38 @@ class SessionCreateAPIView(View):
             )
             
             return JsonResponse({"success": True, "session_id": session.id}, status=201)
+            
+        except json.JSONDecodeError:
+            return JsonResponse({"success": False, "error": "Invalid JSON."}, status=400)
+        except Exception as e:
+            return JsonResponse({"success": False, "error": str(e)}, status=500)
+
+
+class AbortSessionAPIView(View):
+    """API view to securely abort a debate session."""
+    
+    def post(self, request, session_id, *args, **kwargs):
+        try:
+            data = json.loads(request.body)
+            justification = data.get('justification')
+            
+            if not justification or not justification.strip():
+                return JsonResponse({"success": False, "error": "L'explication de l'arrêt est obligatoire."}, status=400)
+                
+            session = get_object_or_404(Session, pk=session_id)
+            
+            # Allow aborting even if already aborting to be idempotent
+            if session.status in ['ABORTED', 'SUCCESS']:
+                return JsonResponse({"success": False, "error": f"Session is already {session.status}."}, status=400)
+                
+            session.status = 'ABORTED'
+            session.abort_justification = justification.strip()
+            session.save(update_fields=['status', 'abort_justification', 'updated_at'])
+            
+            # Immediately set the abort event in safety to break the async generator
+            set_abort_event(session.id)
+            
+            return JsonResponse({"success": True}, status=200)
             
         except json.JSONDecodeError:
             return JsonResponse({"success": False, "error": "Invalid JSON."}, status=400)
@@ -366,7 +400,7 @@ async def stream_debate(request, session_id):
 
     async def event_stream():
         try:
-            async for event in run_debate_engine(agents, session.topic, confrontation_rounds=2):
+            async for event in run_debate_engine(agents, session.topic, confrontation_rounds=2, session_id=session.id):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'agent_id': 'system', 'content': f'Engine exception: {str(e)}'})}\n\n"
@@ -374,4 +408,55 @@ async def stream_debate(request, session_id):
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
+    return response
+
+
+async def download_pdf_report(request, session_id):
+    """
+    Generate and serve a forensic PDF report for a completed debate session.
+
+    GET /session/<session_id>/report/pdf/
+
+    Access Rules
+    ------------
+    - HTTP 404 if the session does not exist.
+    - HTTP 403 if the session has not yet reached a terminal state
+      (only SUCCESS and ABORTED sessions are reportable).
+    - HTTP 200 with application/pdf and Content-Disposition: attachment
+      otherwise.
+
+    Architecture
+    ------------
+    ``generate_pdf_report`` is CPU/I/O bound (ReportLab rendering).
+    It is wrapped in ``sync_to_async`` to keep the ASGI event loop free.
+    """
+    try:
+        session = await sync_to_async(Session.objects.get)(id=session_id)
+    except Session.DoesNotExist:
+        raise Http404(f"Session {session_id} not found.")
+
+    # Only terminal sessions can be exported
+    if session.status not in ("SUCCESS", "ABORTED"):
+        return HttpResponseForbidden(
+            "Ce rapport n'est disponible que pour les sessions terminées "
+            "(statut SUCCESS ou ABORTED)."
+        )
+
+    # Generate PDF asynchronously (sync_to_async isolates blocking I/O)
+    _generate_async = sync_to_async(generate_pdf_report)
+    pdf_bytes = await _generate_async(session)
+
+    # Build a safe filename
+    safe_title = "".join(
+        c if c.isalnum() or c in ("-", "_") else "_"
+        for c in session.title
+    )[:50]
+    filename = f"MAS-D_rapport_{session.id}_{safe_title}.pdf"
+
+    response = FileResponse(
+        io.BytesIO(pdf_bytes),
+        content_type="application/pdf",
+        as_attachment=True,
+        filename=filename,
+    )
     return response

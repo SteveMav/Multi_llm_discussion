@@ -2,3 +2,4 @@ django>=5.0,<6.0
 django-tailwind[reload]>=3.8.0
 django-cryptography-5
 uvicorn[standard]>=0.30.0
+reportlab>=4.0.0

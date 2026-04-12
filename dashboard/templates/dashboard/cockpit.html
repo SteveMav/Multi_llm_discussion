@@ -27,6 +27,16 @@
                         ABORT
                     </button>
                 </div>
+                <div>
+                    <a id="download-pdf-btn"
+                       href="{% url 'dashboard:download-pdf-report' session.id %}"
+                       class="block bg-cyan/10 text-cyan font-headline uppercase tracking-widest px-6 py-3 hover:bg-cyan/20 transition-colors opacity-50 pointer-events-none"
+                       style="border-radius: 0;"
+                       aria-disabled="true"
+                       title="Disponible une fois le débat terminé">
+                        ↓ Download PDF Report
+                    </a>
+                </div>
             </div>
         </header>
 
@@ -62,5 +72,28 @@
         </section>
         
     </div>
+
+    <!-- Abort Modal Overlay -->
+    <div id="abort-modal-overlay" class="fixed inset-0 bg-black/80 hidden z-50 flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-layer-2 max-w-lg w-full p-8 shadow-2xl relative ring-1 ring-red-500/20 rounded-none">
+            <h2 class="font-headline text-2xl text-red-500 uppercase tracking-widest mb-4">Kill-Switch Triggered</h2>
+            <p class="text-text-muted mb-6 font-body text-sm">Please justify the immediate termination of this session. This action cannot be reversed and the session will be permanently sealed as ABORTED.</p>
+            
+            <form id="abort-form" data-session-id="{{ session.id }}">
+                {% csrf_token %}
+                <textarea id="abort-justification" rows="4" required placeholder="e.g., Infinite loop detected, models hallucinating..."
+                          class="w-full bg-layer-1 text-text-primary p-4 focus:outline-none focus:ring-1 focus:ring-red-500/50 resize-none font-mono text-sm placeholder-white/20 rounded-none border-none"></textarea>
+                
+                <div class="mt-6 flex justify-end gap-4">
+                    <button type="button" id="abort-cancel-btn" class="px-6 py-2 uppercase tracking-widest text-text-muted hover:text-white transition-colors font-headline text-sm rounded-none">Cancel</button>
+                    <button type="submit" id="abort-confirm-btn" class="px-6 py-2 uppercase tracking-widest bg-red-500/20 text-red-500 hover:bg-red-500/40 transition-colors font-headline text-sm rounded-none">Confirm Abort</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'dashboard/js/stream-client.js' %}"></script>
 {% endblock %}

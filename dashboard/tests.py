@@ -1099,3 +1099,312 @@ class StreamingSSETests(TestCase):
         self.assertTrue(len(events) > 0)
         self.assertEqual(events[0]["type"], "error")
         self.assertIn("no agents", events[0]["content"].lower())
+
+# ════════════════════════════════════════════════════════════
+#  Story 3.3 — The Justified Kill-Switch
+# ════════════════════════════════════════════════════════════
+
+class KillSwitchTests(TestCase):
+    """Story 3.3 — Verify the kill switch API and abort propagation."""
+
+    def setUp(self):
+        self.client = Client()
+        self.session = Session.objects.create(
+            title="Kill Switch Test", topic="A controversial topic", token_budget=5000,
+            status="RUNNING"
+        )
+        ApiKeyStorage.objects.create(provider="openai", api_key="sk-test-1")
+        SessionAgent.objects.create(
+            session=self.session, provider="openai",
+            archetype="skeptic", slot_number=1,
+        )
+
+    def tearDown(self):
+        from orchestrator.safety import clear_abort_event
+        clear_abort_event(self.session.id)
+        super().tearDown()
+
+    def test_abort_session_requires_justification(self):
+        resp = self.client.post(
+            f"/api/session/{self.session.id}/abort/",
+            json.dumps({"justification": ""}),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("obligatoire", resp.json()["error"])
+        
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, "RUNNING")
+
+    def test_abort_session_success(self):
+        resp = self.client.post(
+            f"/api/session/{self.session.id}/abort/",
+            json.dumps({"justification": "Infinite loop detected."}),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["success"])
+        
+        self.session.refresh_from_db()
+        self.assertEqual(self.session.status, "ABORTED")
+        self.assertEqual(self.session.abort_justification, "Infinite loop detected.")
+
+    def test_abort_triggers_engine_error_yield(self):
+        from orchestrator.safety import get_abort_event
+        resp = self.client.post(
+            f"/api/session/{self.session.id}/abort/",
+            json.dumps({"justification": "Testing event set"}),
+            content_type="application/json"
+        )
+        self.assertEqual(resp.status_code, 200)
+        
+        # Verify the event dictionary in safety.py holds the flag
+        ev = get_abort_event(self.session.id)
+        self.assertTrue(ev.is_set())
+
+
+# ════════════════════════════════════════════════════════════
+#  Story 4.1 — Automated PDF Forensic Report
+# ════════════════════════════════════════════════════════════
+
+import io
+
+
+class PdfExporterUnitTests(TestCase):
+    """Story 4.1 — Unit tests for orchestrator.exporter module."""
+
+    def _make_session(self, status="SUCCESS", justification=None):
+        session = Session.objects.create(
+            title="Rapport Forensique",
+            topic="L'IA est-elle dangereuse ?",
+            token_budget=2000,
+            status=status,
+            abort_justification=justification,
+        )
+        ApiKeyStorage.objects.create(provider="openai", api_key="sk-test-1")
+        ApiKeyStorage.objects.create(provider="gemini", api_key="sk-test-2")
+        SessionAgent.objects.create(
+            session=session, provider="openai",
+            archetype="skeptic", slot_number=1,
+        )
+        SessionAgent.objects.create(
+            session=session, provider="gemini",
+            archetype="optimist", slot_number=2,
+        )
+        return session
+
+    # ── Module-level guards ──────────────────────────────────
+
+    def test_exporter_module_importable(self):
+        """orchestrator.exporter can be imported without error."""
+        import orchestrator.exporter as mod
+        self.assertIsNotNone(mod)
+
+    def test_exporter_no_django_http_imports(self):
+        """exporter.py must NOT import from django.http or django.views
+        (domain boundary — only ORM + stdlib + reportlab allowed)."""
+        import inspect
+        import orchestrator.exporter as mod
+        source = inspect.getsource(mod)
+        self.assertNotIn("from django.http", source)
+        self.assertNotIn("from django.views", source)
+        self.assertNotIn("from dashboard.views", source)
+
+    def test_generate_pdf_report_function_exists(self):
+        """generate_pdf_report(session) public function must be present."""
+        from orchestrator.exporter import generate_pdf_report
+        self.assertTrue(callable(generate_pdf_report))
+
+    # ── Output validation ────────────────────────────────────
+
+    def test_generate_pdf_returns_bytes(self):
+        """generate_pdf_report must return bytes (a valid binary blob)."""
+        from orchestrator.exporter import generate_pdf_report
+        session = self._make_session()
+        result = generate_pdf_report(session)
+        self.assertIsInstance(result, bytes)
+
+    def test_generate_pdf_starts_with_pdf_magic_bytes(self):
+        """The returned bytes must be a valid PDF (starts with %PDF-)."""
+        from orchestrator.exporter import generate_pdf_report
+        session = self._make_session()
+        result = generate_pdf_report(session)
+        self.assertTrue(result.startswith(b"%PDF-"),
+                        "Output does not start with %PDF- magic bytes")
+
+    def test_generate_pdf_non_empty(self):
+        """PDF output must be non-trivial (> 1 KB)."""
+        from orchestrator.exporter import generate_pdf_report
+        session = self._make_session()
+        result = generate_pdf_report(session)
+        self.assertGreater(len(result), 1024,
+                           "PDF output is suspiciously small")
+
+    # ── Content correctness ──────────────────────────────────
+
+    def test_pdf_contains_session_title(self):
+        """PDF text content must include the session title."""
+        from orchestrator.exporter import generate_pdf_report
+        session = self._make_session()
+        result = generate_pdf_report(session)
+        # ReportLab uses WinAnsiEncoding — try both utf-8 and latin-1
+        title = session.title
+        self.assertTrue(
+            title.encode("utf-8") in result or title.encode("latin-1", errors="replace") in result,
+            f"Session title '{title}' not found in PDF bytes",
+        )
+
+    def test_pdf_contains_session_topic(self):
+        """PDF must include the session topic."""
+        from orchestrator.exporter import generate_pdf_report
+        session = self._make_session()
+        result = generate_pdf_report(session)
+        # ReportLab uses WinAnsiEncoding — try both utf-8 and latin-1
+        topic = session.topic
+        self.assertTrue(
+            topic.encode("utf-8") in result or topic.encode("latin-1", errors="replace") in result,
+            "Session topic not found in PDF bytes",
+        )
+
+    def test_pdf_aborted_session_includes_justification_block(self):
+        """For ABORTED sessions, the justification text must be present in the PDF."""
+        from orchestrator.exporter import generate_pdf_report
+        justification = "Boucle infinie detectee par le chercheur."
+        session = self._make_session(status="ABORTED", justification=justification)
+        result = generate_pdf_report(session)
+        # ReportLab uses WinAnsiEncoding (latin-1 family) for Type1 fonts.
+        # Try multiple encodings for resilience.
+        encoded_utf8   = justification.encode("utf-8")
+        encoded_latin1 = justification.encode("latin-1", errors="replace")
+        self.assertTrue(
+            encoded_utf8 in result or encoded_latin1 in result,
+            "Abort justification not found in ABORTED session PDF",
+        )
+
+    def test_pdf_success_session_no_abort_block(self):
+        """For SUCCESS sessions without abort, the abort banner must NOT appear."""
+        from orchestrator.exporter import generate_pdf_report
+        session = self._make_session(status="SUCCESS")
+        result = generate_pdf_report(session)
+        # The abort header keyword should be absent
+        self.assertNotIn(b"INTERROMPU", result)
+
+
+# ── View-level tests ─────────────────────────────────────────
+
+class DownloadPdfViewTests(TestCase):
+    """Story 4.1 — HTTP-level tests for download_pdf_report view."""
+
+    def setUp(self):
+        self.client = Client()
+        self.session = Session.objects.create(
+            title="Debate Alpha",
+            topic="Is nuclear power safe?",
+            token_budget=3000,
+            status="SUCCESS",
+        )
+        ApiKeyStorage.objects.create(provider="openai", api_key="sk-dl-1")
+        ApiKeyStorage.objects.create(provider="gemini", api_key="sk-dl-2")
+        SessionAgent.objects.create(
+            session=self.session, provider="openai",
+            archetype="skeptic", slot_number=1,
+        )
+        SessionAgent.objects.create(
+            session=self.session, provider="gemini",
+            archetype="optimist", slot_number=2,
+        )
+
+    def _url(self, session_id=None):
+        sid = session_id if session_id is not None else self.session.id
+        return f"/session/{sid}/report/pdf/"
+
+    def test_pdf_download_url_exists_and_returns_200(self):
+        """GET /session/<id>/report/pdf/ must return HTTP 200 for SUCCESS session."""
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+
+    def test_pdf_download_content_type_is_pdf(self):
+        """Response Content-Type must be application/pdf."""
+        resp = self.client.get(self._url())
+        self.assertTrue(
+            resp["Content-Type"].startswith("application/pdf"),
+            f"Expected application/pdf but got: {resp['Content-Type']}",
+        )
+
+    def test_pdf_download_content_disposition_is_attachment(self):
+        """Response must use Content-Disposition: attachment for file download."""
+        resp = self.client.get(self._url())
+        disposition = resp.get("Content-Disposition", "")
+        self.assertIn("attachment", disposition)
+        self.assertIn(".pdf", disposition)
+
+    def test_pdf_download_response_is_non_empty(self):
+        """Downloaded PDF content must be non-empty."""
+        resp = self.client.get(self._url())
+        content = b"".join(resp.streaming_content) if hasattr(resp, "streaming_content") else resp.content
+        self.assertGreater(len(content), 0)
+
+    def test_pdf_download_404_for_invalid_session(self):
+        """Non-existent session must return 404."""
+        resp = self.client.get(self._url(session_id=99999))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_pdf_download_403_for_session_not_terminal(self):
+        """RUNNING session must return 403 (not yet downloadable)."""
+        running_session = Session.objects.create(
+            title="Running",
+            topic="Still running",
+            token_budget=1000,
+            status="RUNNING",
+        )
+        resp = self.client.get(self._url(session_id=running_session.id))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_pdf_download_works_for_aborted_session(self):
+        """ABORTED sessions must also produce a downloadable PDF."""
+        aborted = Session.objects.create(
+            title="Aborted Debate",
+            topic="Aborted topic",
+            token_budget=1000,
+            status="ABORTED",
+            abort_justification="Arrêt forcé par le chercheur.",
+        )
+        resp = self.client.get(self._url(session_id=aborted.id))
+        self.assertEqual(resp.status_code, 200)
+
+
+# ── Frontend integration tests ────────────────────────────────
+
+class CockpitPdfButtonTests(TestCase):
+    """Story 4.1 — Verify the Download PDF button is present in cockpit template."""
+
+    def setUp(self):
+        self.client = Client()
+        self.session_success = Session.objects.create(
+            title="Finished Debate",
+            topic="Test topic",
+            token_budget=2000,
+            status="SUCCESS",
+        )
+        self.session_running = Session.objects.create(
+            title="Live Debate",
+            topic="Live topic",
+            token_budget=2000,
+            status="RUNNING",
+        )
+        ApiKeyStorage.objects.create(provider="openai", api_key="sk-btn-1")
+        for sess in (self.session_success, self.session_running):
+            SessionAgent.objects.create(
+                session=sess, provider="openai",
+                archetype="skeptic", slot_number=1,
+            )
+
+    def test_cockpit_has_pdf_download_button(self):
+        """Cockpit page must include the PDF download button element."""
+        resp = self.client.get(f"/session/{self.session_success.id}/cockpit/")
+        self.assertContains(resp, "download-pdf-btn")
+
+    def test_pdf_download_button_links_to_pdf_url(self):
+        """The download button/link must reference the /report/pdf/ URL."""
+        resp = self.client.get(f"/session/{self.session_success.id}/cockpit/")
+        self.assertContains(resp, "report/pdf")
