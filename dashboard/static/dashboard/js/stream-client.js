@@ -5,6 +5,8 @@
   const streamUrl = cockpitRoot.dataset.streamUrl;
   const logContainer = document.getElementById('event-stream-log');
   const killSwitch = document.getElementById('kill-switch-btn');
+  const downloadPdfBtn = document.getElementById('download-pdf-btn');
+  const statusBadge = document.getElementById('session-status-badge');
   
   // Archteype colors for glow (matched with genetic.py)
   const colors = {
@@ -58,13 +60,18 @@
 
   function handleStreamEvent(data) {
     if (data.type === 'done') {
-      appendMessage("system", "system", "[STREAM FINISHED]");
+      appendMessage("system", "system", data.content || "[STREAM FINISHED]");
+      setStatus("SUCCESS");
+      enableReportDownload();
       closeStream();
       return;
     }
 
     if (data.type === 'error') {
       appendMessage("error", data.agent_id || "system", `[ERROR] ${data.content}`);
+      setStatus("ABORTED");
+      enableReportDownload();
+      closeStream();
       return;
     }
 
@@ -150,6 +157,23 @@
     if (killSwitch) {
       killSwitch.disabled = true;
     }
+  }
+
+  function setStatus(status) {
+    if (!statusBadge) return;
+    const span = statusBadge.querySelector('span');
+    if (!span) return;
+    span.textContent = status;
+    span.className = status === 'SUCCESS'
+      ? 'font-mono text-emerald text-base ml-2'
+      : 'font-mono text-error text-base ml-2';
+  }
+
+  function enableReportDownload() {
+    if (!downloadPdfBtn) return;
+    downloadPdfBtn.classList.remove('opacity-50', 'pointer-events-none');
+    downloadPdfBtn.setAttribute('aria-disabled', 'false');
+    downloadPdfBtn.title = 'Télécharger le rapport PDF';
   }
   
   function showAbortModal() {

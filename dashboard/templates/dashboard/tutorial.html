@@ -1,0 +1,389 @@
+{% extends "dashboard/base.html" %}
+
+{% block title %}Guide de Mission — MAS-D Observatory{% endblock %}
+
+{% block content %}
+<div class="min-h-screen px-6 py-12">
+    <div class="max-w-4xl mx-auto">
+
+        <!-- ═══════════════════════════════════════════════════════════
+             HEADER — Mission Briefing
+             ═══════════════════════════════════════════════════════════ -->
+        <header class="mb-16 fade-in-up">
+            <div class="flex items-end justify-between mb-4">
+                <div>
+                    <h1 class="text-4xl font-bold font-headline text-cyan mb-2">
+                        Guide de Mission
+                    </h1>
+                    <p class="font-mono text-sm text-text-muted">
+                        MAS-D Observatory — Procédure opérationnelle complète
+                    </p>
+                </div>
+                <div class="font-mono text-[10px] text-text-muted uppercase tracking-[0.2em] hidden md:block">
+                    <span class="text-emerald">●</span> TUTORIAL_ACTIVE
+                </div>
+            </div>
+            <div class="surface-1 p-4">
+                <p class="text-sm text-text-secondary font-body leading-relaxed">
+                    Ce guide vous accompagne à travers les 5 étapes du protocole MAS-D,
+                    de la configuration initiale de vos clés API jusqu'à l'export du rapport de débat.
+                    Chaque section correspond à une page de l'application.
+                </p>
+            </div>
+        </header>
+
+
+        <!-- ═══════════════════════════════════════════════════════════
+             TIMELINE — 5 étapes
+             ═══════════════════════════════════════════════════════════ -->
+        <div class="space-y-12">
+
+            <!-- ─── ÉTAPE 1 : Le Vault (API Keys) ─── -->
+            <article class="timeline-step fade-in-up" style="--timeline-color: var(--color-cyan);" id="step-1-vault">
+                <div class="timeline-dot">1</div>
+
+                <div class="surface-1 p-6 glow-cyan">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="font-mono text-xs text-cyan uppercase tracking-widest">Étape 01</span>
+                        <span class="text-text-muted font-mono text-xs">—</span>
+                        <span class="font-headline text-lg text-text-primary">Le Vault — Configuration API</span>
+                    </div>
+
+                    <p class="text-sm text-text-secondary font-body leading-relaxed mb-4">
+                        Avant toute chose, vous devez enregistrer vos clés API pour activer les providers
+                        d'intelligence artificielle. Les clés sont chiffrées avec AES-256 et stockées en toute sécurité.
+                    </p>
+
+                    <div class="surface-2 p-4 mb-4">
+                        <div class="font-mono text-xs text-text-muted uppercase tracking-widest mb-3">Providers Supportés</div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div class="surface-3 p-3">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-2 h-2 bg-cyan"></div>
+                                    <span class="font-mono text-sm text-cyan">OpenAI</span>
+                                </div>
+                                <p class="font-mono text-[10px] text-text-muted mt-1">sk-...</p>
+                            </div>
+                            <div class="surface-3 p-3">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-2 h-2 bg-purple"></div>
+                                    <span class="font-mono text-sm text-purple">Gemini</span>
+                                </div>
+                                <p class="font-mono text-[10px] text-text-muted mt-1">AIzaSy...</p>
+                            </div>
+                            <div class="surface-3 p-3">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-2 h-2 bg-emerald"></div>
+                                    <span class="font-mono text-sm text-emerald">Anthropic</span>
+                                </div>
+                                <p class="font-mono text-[10px] text-text-muted mt-1">sk-ant-...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="surface-2 p-3 mb-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-purple text-xs">💡</span>
+                            <span class="font-mono text-xs text-purple uppercase tracking-widest">Astuce</span>
+                        </div>
+                        <p class="text-xs text-text-muted font-body leading-relaxed">
+                            Vous pouvez également ajouter des providers personnalisés (DeepSeek, Mistral, etc.)
+                            via la section « Modèles Personnalisés » de la page Setup.
+                        </p>
+                    </div>
+
+                    <a href="{% url 'dashboard:setup' %}"
+                       class="inline-flex items-center gap-2 bg-cyan/10 text-cyan px-4 py-2 font-mono text-xs hover:bg-cyan/20 transition-colors">
+                        ACCÉDER AU VAULT <span>→</span>
+                    </a>
+                </div>
+            </article>
+
+
+            <!-- ─── ÉTAPE 2 : Armement de Session ─── -->
+            <article class="timeline-step fade-in-up" style="--timeline-color: var(--color-purple);" id="step-2-session">
+                <div class="timeline-dot" style="background: var(--color-purple);">2</div>
+
+                <div class="surface-2 p-6 glow-purple">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="font-mono text-xs text-purple uppercase tracking-widest">Étape 02</span>
+                        <span class="text-text-muted font-mono text-xs">—</span>
+                        <span class="font-headline text-lg text-text-primary">Armement — Création de Session</span>
+                    </div>
+
+                    <p class="text-sm text-text-secondary font-body leading-relaxed mb-4">
+                        Créez une nouvelle session de débat en définissant les paramètres fondamentaux.
+                        Un « sanity check » automatique valide la cohérence avant d'armer la session.
+                    </p>
+
+                    <div class="surface-1 p-4 mb-4">
+                        <div class="font-mono text-xs text-text-muted uppercase tracking-widest mb-3">Paramètres Requis</div>
+                        <div class="space-y-3">
+                            <div class="flex items-start gap-3">
+                                <span class="font-mono text-xs text-cyan w-32 shrink-0">_TITLE</span>
+                                <p class="text-xs text-text-secondary">
+                                    Nom de la session (ex: « Alignment éthique des LLMs »)
+                                </p>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="font-mono text-xs text-purple w-32 shrink-0">_TOPIC</span>
+                                <p class="text-xs text-text-secondary">
+                                    Le sujet de débat — c'est le prompt central qui sera soumis aux agents
+                                </p>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="font-mono text-xs text-emerald w-32 shrink-0">_TOKEN_BUDGET</span>
+                                <p class="text-xs text-text-secondary">
+                                    Budget maximum de tokens pour la session (100 – 1 000 000)
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="surface-1 p-3 mb-4">
+                        <div class="flex items-center gap-2">
+                            <span class="text-emerald">✓</span>
+                            <p class="text-xs text-text-muted font-mono">
+                                Après validation, le statut passe à <span class="text-emerald">READY</span> et vous êtes redirigé vers la Roundtable.
+                            </p>
+                        </div>
+                    </div>
+
+                    <a href="{% url 'dashboard:setup' %}"
+                       class="inline-flex items-center gap-2 bg-purple/10 text-purple px-4 py-2 font-mono text-xs hover:bg-purple/20 transition-colors">
+                        CRÉER UNE SESSION <span>→</span>
+                    </a>
+                </div>
+            </article>
+
+
+            <!-- ─── ÉTAPE 3 : The Roundtable ─── -->
+            <article class="timeline-step fade-in-up" style="--timeline-color: var(--color-emerald);" id="step-3-roundtable">
+                <div class="timeline-dot" style="background: var(--color-emerald);">3</div>
+
+                <div class="surface-1 p-6 glow-emerald">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="font-mono text-xs text-emerald uppercase tracking-widest">Étape 03</span>
+                        <span class="text-text-muted font-mono text-xs">—</span>
+                        <span class="font-headline text-lg text-text-primary">The Roundtable — Configuration Agents</span>
+                    </div>
+
+                    <p class="text-sm text-text-secondary font-body leading-relaxed mb-4">
+                        Composez votre panel de débatteurs en assignant un archétype de la Genetic Matrix
+                        et un provider IA à chaque slot.
+                    </p>
+
+                    <!-- Archetypes mini-grid -->
+                    <div class="surface-2 p-4 mb-4">
+                        <div class="font-mono text-xs text-text-muted uppercase tracking-widest mb-3">Les 5 Archétypes</div>
+                        <div class="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                            <div class="surface-3 p-2 text-center">
+                                <span class="text-lg" style="color: #f28b82;">⚡</span>
+                                <div class="font-mono text-[10px] mt-1" style="color: #f28b82;">Sceptique</div>
+                            </div>
+                            <div class="surface-3 p-2 text-center">
+                                <span class="text-lg text-emerald">✦</span>
+                                <div class="font-mono text-[10px] text-emerald mt-1">Optimiste</div>
+                            </div>
+                            <div class="surface-3 p-2 text-center">
+                                <span class="text-lg text-cyan">◆</span>
+                                <div class="font-mono text-[10px] text-cyan mt-1">Pragmatique</div>
+                            </div>
+                            <div class="surface-3 p-2 text-center">
+                                <span class="text-lg text-warning">▣</span>
+                                <div class="font-mono text-[10px] text-warning mt-1">Conservateur</div>
+                            </div>
+                            <div class="surface-3 p-2 text-center">
+                                <span class="text-lg text-purple">◇</span>
+                                <div class="font-mono text-[10px] text-purple mt-1">Innovateur</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="surface-2 p-4 mb-4">
+                        <div class="font-mono text-xs text-text-muted uppercase tracking-widest mb-3">Règles</div>
+                        <ul class="space-y-2">
+                            <li class="flex items-start gap-2 text-xs text-text-secondary">
+                                <span class="text-cyan shrink-0">→</span>
+                                Configurez entre <span class="text-cyan font-mono">2</span> et <span class="text-cyan font-mono">4</span> agents par session
+                            </li>
+                            <li class="flex items-start gap-2 text-xs text-text-secondary">
+                                <span class="text-cyan shrink-0">→</span>
+                                Chaque archétype ne peut être utilisé <span class="text-warning font-mono">qu'une seule fois</span> par session
+                            </li>
+                            <li class="flex items-start gap-2 text-xs text-text-secondary">
+                                <span class="text-cyan shrink-0">→</span>
+                                Chaque provider choisi doit avoir une <span class="text-emerald">clé API enregistrée</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-xs text-text-secondary">
+                                <span class="text-cyan shrink-0">→</span>
+                                Le <span class="text-text-primary">Modérateur Architecte</span> (⬡) est automatiquement inclus — invisible
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </article>
+
+
+            <!-- ─── ÉTAPE 4 : Le Cockpit ─── -->
+            <article class="timeline-step fade-in-up" style="--timeline-color: var(--color-cyan);" id="step-4-cockpit">
+                <div class="timeline-dot">4</div>
+
+                <div class="surface-2 p-6 glow-cyan">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="font-mono text-xs text-cyan uppercase tracking-widest">Étape 04</span>
+                        <span class="text-text-muted font-mono text-xs">—</span>
+                        <span class="font-headline text-lg text-text-primary">Le Cockpit — Observation Live</span>
+                    </div>
+
+                    <p class="text-sm text-text-secondary font-body leading-relaxed mb-4">
+                        Le cœur de l'observatoire. Le cockpit affiche le débat en temps réel via Server-Sent Events (SSE).
+                        Chaque agent est identifié par son waypoint chromatique.
+                    </p>
+
+                    <div class="surface-1 p-4 mb-4">
+                        <div class="font-mono text-xs text-text-muted uppercase tracking-widest mb-3">Les 3 Phases du Débat</div>
+                        <div class="space-y-3">
+                            <div class="flex items-center gap-4">
+                                <div class="surface-3 px-3 py-2 w-32 text-center">
+                                    <span class="font-mono text-xs text-cyan uppercase">Exposition</span>
+                                </div>
+                                <p class="text-xs text-text-muted flex-1">
+                                    Chaque agent présente sa position initiale sur le sujet
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2 ml-14">
+                                <div class="w-px h-4 bg-text-muted/30"></div>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <div class="surface-3 px-3 py-2 w-32 text-center">
+                                    <span class="font-mono text-xs text-purple uppercase">Confrontation</span>
+                                </div>
+                                <p class="text-xs text-text-muted flex-1">
+                                    Rounds d'argumentation adversariale entre agents
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2 ml-14">
+                                <div class="w-px h-4 bg-text-muted/30"></div>
+                            </div>
+                            <div class="flex items-center gap-4">
+                                <div class="surface-3 px-3 py-2 w-32 text-center">
+                                    <span class="font-mono text-xs text-emerald uppercase">Résolution</span>
+                                </div>
+                                <p class="text-xs text-text-muted flex-1">
+                                    Le modérateur synthétise et produit le verdict final
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="surface-1 p-3 mb-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-purple text-xs">💡</span>
+                            <span class="font-mono text-xs text-purple uppercase tracking-widest">Waypoints Chromatiques</span>
+                        </div>
+                        <p class="text-xs text-text-muted font-body leading-relaxed">
+                            Chaque intervention d'un agent est colorée selon la couleur définie dans la Genetic Matrix.
+                            Identifiez instantanément qui parle sans lire le label.
+                        </p>
+                    </div>
+                </div>
+            </article>
+
+
+            <!-- ─── ÉTAPE 5 : Contrôle & Export ─── -->
+            <article class="timeline-step fade-in-up" style="--timeline-color: var(--color-error);" id="step-5-control">
+                <div class="timeline-dot" style="background: var(--color-error);">5</div>
+
+                <div class="surface-1 p-6">
+                    <div class="flex items-center gap-3 mb-4">
+                        <span class="font-mono text-xs text-error uppercase tracking-widest">Étape 05</span>
+                        <span class="text-text-muted font-mono text-xs">—</span>
+                        <span class="font-headline text-lg text-text-primary">Contrôle & Export</span>
+                    </div>
+
+                    <p class="text-sm text-text-secondary font-body leading-relaxed mb-4">
+                        Deux outils de clôture pour chaque session : l'arrêt d'urgence et l'exportation du rapport.
+                    </p>
+
+                    <!-- Kill-Switch -->
+                    <div class="surface-2 p-4 mb-4 border-l-2 border-error">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-error font-mono text-sm">⚠</span>
+                            <span class="font-headline text-sm text-error uppercase tracking-wider">Kill-Switch</span>
+                        </div>
+                        <p class="text-xs text-text-secondary font-body leading-relaxed mb-2">
+                            Si un débat dérape (boucle infinie, hallucinations, perte de cohérence), activez le Kill-Switch.
+                            Une <span class="text-warning">justification est obligatoire</span> pour l'audit trail.
+                        </p>
+                        <div class="font-mono text-[10px] text-text-muted">
+                            session.status → <span class="text-error">ABORTED</span> | abort_justification: <span class="text-text-secondary">string (required)</span>
+                        </div>
+                    </div>
+
+                    <!-- PDF Export -->
+                    <div class="surface-2 p-4 mb-4 border-l-2 border-cyan">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-cyan font-mono text-sm">↓</span>
+                            <span class="font-headline text-sm text-cyan uppercase tracking-wider">Export PDF</span>
+                        </div>
+                        <p class="text-xs text-text-secondary font-body leading-relaxed mb-2">
+                            Une fois le débat terminé (statut <span class="text-emerald font-mono">SUCCESS</span> ou <span class="text-error font-mono">ABORTED</span>),
+                            téléchargez le rapport forensique PDF. Il contient l'intégralité des échanges et métadonnées.
+                        </p>
+                        <div class="font-mono text-[10px] text-text-muted">
+                            endpoint: <span class="text-cyan">/session/{id}/report/pdf/</span> | content-type: <span class="text-purple">application/pdf</span>
+                        </div>
+                    </div>
+
+                    <!-- Terminal statuses -->
+                    <div class="surface-2 p-4">
+                        <div class="font-mono text-xs text-text-muted uppercase tracking-widest mb-3">Statuts Terminaux</div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="surface-3 p-3 text-center">
+                                <div class="font-mono text-sm text-emerald mb-1">SUCCESS</div>
+                                <div class="font-mono text-[10px] text-text-muted">Débat complété</div>
+                            </div>
+                            <div class="surface-3 p-3 text-center">
+                                <div class="font-mono text-sm text-error mb-1">ABORTED</div>
+                                <div class="font-mono text-[10px] text-text-muted">Arrêt d'urgence</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </article>
+
+        </div>
+
+
+        <!-- ═══════════════════════════════════════════════════════════
+             CTA FINAL
+             ═══════════════════════════════════════════════════════════ -->
+        <div class="mt-16 surface-2 p-8 text-center fade-in-up" id="tutorial-cta">
+            <h3 class="font-headline text-xl text-text-primary mb-3">
+                Prêt à lancer votre première simulation ?
+            </h3>
+            <p class="text-sm text-text-muted font-body mb-6 max-w-lg mx-auto">
+                Commencez par configurer vos clés API, puis créez votre première session de débat multi-agents.
+            </p>
+            <a href="{% url 'dashboard:setup' %}"
+               class="inline-flex items-center gap-2 bg-cyan text-void px-8 py-3 font-mono text-sm font-semibold hover:bg-cyan/80 transition-all hover:shadow-[0_0_25px_rgba(153,247,255,0.4)]">
+                COMMENCER <span class="text-lg">→</span>
+            </a>
+        </div>
+
+
+        <!-- Footer spacer -->
+        <div class="mt-12 text-center">
+            <div class="inline-flex items-center gap-3">
+                <div class="w-2 h-2 bg-cyan pulse-cyan"></div>
+                <span class="font-mono text-[10px] text-text-muted uppercase tracking-[0.3em]">
+                    Mission Briefing Complete
+                </span>
+                <div class="w-2 h-2 bg-cyan pulse-cyan"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}

@@ -16,13 +16,18 @@
                 &mdash; {{ session.title }}
             </p>
             <p class="font-mono text-xs text-text-muted mt-1">
-                Configure 2 to 4 agents from the Genetic Matrix. A 5th invisible agent
-                (<span class="text-text-secondary">{{ moderator.label }}</span>) is automatically included for arbitration.
+                Choisissez 2 à 4 modèles, leurs rôles et leurs axes de confrontation.
+                Le modérateur anime la discussion et force une synthèse exploitable.
             </p>
         </header>
 
         <!-- Agent Slots -->
         <section id="roundtable-panel" class="surface-1 p-8 mb-6">
+            <div class="sr-only">
+                {% for key, arch in archetypes.items %}
+                    {{ arch.label }}
+                {% endfor %}
+            </div>
             <div class="flex items-center justify-between mb-6">
                 <h2 class="text-xl font-bold font-headline text-text-primary">
                     Agent Slots
@@ -49,15 +54,36 @@
         </section>
 
         <!-- Moderator Info -->
-        <section class="surface-2 p-4 mb-6 flex items-center gap-4 border-l-4 border-text-secondary">
-            <span class="text-2xl">{{ moderator.icon }}</span>
-            <div>
-                <p class="font-mono text-sm text-text-secondary font-semibold">{{ moderator.label }}</p>
-                <p class="font-mono text-xs text-text-muted">
-                    Agent invisible d'arbitrage — automatiquement inclus dans chaque session.
-                </p>
+        <section class="surface-2 p-5 mb-6 border-l-4 border-text-secondary">
+            <div class="flex items-start gap-4 mb-4">
+                <span class="text-2xl">{{ moderator.icon }}</span>
+                <div>
+                    <p class="font-mono text-sm text-text-secondary font-semibold">{{ moderator.label }}</p>
+                    <p class="font-mono text-xs text-text-muted">
+                        Il reformule, arbitre les contradictions et produit le verdict final.
+                    </p>
+                </div>
+                <span class="ml-auto font-mono text-xs text-emerald">AUTO</span>
             </div>
-            <span class="ml-auto font-mono text-xs text-emerald">AUTO</span>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-1">
+                    <label for="moderator-provider" class="block font-mono text-xs text-text-muted uppercase tracking-widest">Provider modérateur</label>
+                    <select id="moderator-provider"
+                            class="w-full bg-void text-text-primary font-mono text-sm p-2 focus:outline-none focus:ring-1 focus:ring-cyan appearance-none cursor-pointer">
+                        {% for p in providers %}
+                        <option value="{{ p }}" {% if session.moderator_provider == p %}selected{% endif %}>{{ p|upper }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label for="moderator-model" class="block font-mono text-xs text-text-muted uppercase tracking-widest">Modèle modérateur</label>
+                    <input id="moderator-model" type="text" value="{{ session.moderator_model|default:default_moderator.model }}"
+                           class="w-full bg-void text-text-primary font-mono text-sm p-2 focus:outline-none focus:ring-1 focus:ring-purple"
+                           list="moderator-model-options">
+                    <datalist id="moderator-model-options"></datalist>
+                </div>
+            </div>
         </section>
 
         <!-- Feedback + Submit -->
@@ -88,10 +114,10 @@
     const ARCHETYPES = {
         {% for key, arch in archetypes.items %}
         "{{ key }}": {
-            label: "{{ arch.label }}",
+            label: "{{ arch.label|escapejs }}",
             color: "{{ arch.color }}",
-            icon: "{{ arch.icon }}",
-            prompt_preview: "{{ arch.system_prompt|truncatewords:12 }}"
+            icon: "{{ arch.icon|escapejs }}",
+            prompt_preview: "{{ arch.system_prompt|truncatewords:12|escapejs }}"
         },
         {% endfor %}
     };
@@ -99,6 +125,27 @@
     const PROVIDERS = [
         {% for p in providers %}"{{ p }}",{% endfor %}
     ];
+
+    const MODEL_OPTIONS = {
+        {% for provider, options in model_options.items %}
+        "{{ provider }}": [
+            {% for option in options %}
+            { model: "{{ option.model|escapejs }}", label: "{{ option.label|escapejs }}" },
+            {% endfor %}
+        ],
+        {% endfor %}
+    };
+
+    const DEFAULT_MODELS = {
+        {% for provider, model in default_models.items %}
+        "{{ provider }}": "{{ model|escapejs }}",
+        {% endfor %}
+    };
+
+    const DEFAULT_MODERATOR = {
+        provider: "{{ default_moderator.provider|escapejs }}",
+        model: "{{ default_moderator.model|escapejs }}"
+    };
 
     const CSRF_TOKEN = "{{ csrf_token }}";
 
@@ -113,17 +160,72 @@
     const btnLoader = document.getElementById('btn-rt-loader');
     const counter = document.getElementById('agent-counter');
     const feedback = document.getElementById('roundtable-feedback');
+    const moderatorProvider = document.getElementById('moderator-provider');
+    const moderatorModel = document.getElementById('moderator-model');
+    const moderatorModelOptions = document.getElementById('moderator-model-options');
 
     // ── Pre-populate existing agents ─────────────────────
     const existingAgents = [
         {% for a in existing_agents %}
-        { slot_number: {{ a.slot_number }}, provider: "{{ a.provider }}", archetype: "{{ a.archetype }}" },
+        { slot_number: {{ a.slot_number }}, provider: "{{ a.provider }}", model: "{{ a.model_name|escapejs }}", archetype: "{{ a.archetype }}" },
         {% endfor %}
     ];
+
+    function defaultModel(provider) {
+        return DEFAULT_MODELS[provider] || 'local-simulation';
+    }
+
+    function modelOptions(provider) {
+        return MODEL_OPTIONS[provider] || [];
+    }
+
+    function refreshModeratorModels() {
+        const provider = moderatorProvider.value || DEFAULT_MODERATOR.provider;
+        const options = modelOptions(provider);
+        moderatorModelOptions.innerHTML = options.map(opt =>
+            `<option value="${escapeHtml(opt.model)}">${escapeHtml(opt.label)}</option>`
+        ).join('');
+        if (!moderatorModel.value) {
+            moderatorModel.value = defaultModel(provider);
+        }
+    }
+
+    function makeDefaultSlots() {
+        const hasOpenAI = PROVIDERS.includes('openai');
+        const hasGemini = PROVIDERS.includes('gemini');
+        const fallbackProvider = PROVIDERS[0] || 'openai';
+        const defaults = [
+            {
+                provider: hasOpenAI ? 'openai' : fallbackProvider,
+                model: hasOpenAI ? 'gpt-5.5' : defaultModel(fallbackProvider),
+                archetype: 'skeptic',
+            },
+            {
+                provider: hasOpenAI ? 'openai' : fallbackProvider,
+                model: hasOpenAI ? 'gpt-5.4' : defaultModel(fallbackProvider),
+                archetype: 'pragmatist',
+            },
+            {
+                provider: hasGemini ? 'gemini' : fallbackProvider,
+                model: hasGemini ? 'gemini-3-pro-preview' : defaultModel(fallbackProvider),
+                archetype: 'innovator',
+            },
+        ];
+        return defaults.map((slot, index) => ({ ...slot, slotNumber: index + 1 }));
+    }
 
     // ── Archetype color mapping for slot cards ───────────
     function archetypeColor(key) {
         return ARCHETYPES[key] ? ARCHETYPES[key].color : '#e8eaed';
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
     // ── Used archetypes ──────────────────────────────────
@@ -167,6 +269,18 @@
                         </select>
                     </div>
                     <div class="space-y-1">
+                        <label class="block font-mono text-xs text-text-muted uppercase tracking-widest">Model</label>
+                        <input data-idx="${idx}" data-field="model" type="text"
+                               value="${escapeHtml(slot.model || defaultModel(slot.provider))}"
+                               list="model-options-${idx}"
+                               class="w-full bg-void text-text-primary font-mono text-sm p-2 focus:outline-none focus:ring-1 focus:ring-cyan">
+                        <datalist id="model-options-${idx}">
+                            ${modelOptions(slot.provider).map(opt =>
+                                `<option value="${escapeHtml(opt.model)}">${escapeHtml(opt.label)}</option>`
+                            ).join('')}
+                        </datalist>
+                    </div>
+                    <div class="space-y-1">
                         <label class="block font-mono text-xs text-text-muted uppercase tracking-widest">Archetype</label>
                         <select data-idx="${idx}" data-field="archetype"
                                 class="w-full bg-void text-text-primary font-mono text-sm p-2 focus:outline-none focus:ring-1 focus:ring-purple appearance-none cursor-pointer">
@@ -183,7 +297,8 @@
                 ${slot.archetype ? `
                 <div class="mt-4 p-3 surface-3 font-mono text-xs text-text-muted leading-relaxed">
                     <span style="color:${color}" class="font-semibold">${ARCHETYPES[slot.archetype].icon} ${ARCHETYPES[slot.archetype].label}</span>
-                    <br>${ARCHETYPES[slot.archetype].prompt_preview}
+                    <br><span class="text-text-secondary">${escapeHtml(slot.provider)}/${escapeHtml(slot.model || defaultModel(slot.provider))}</span>
+                    <br>${escapeHtml(ARCHETYPES[slot.archetype].prompt_preview)}
                 </div>
                 ` : ''}
             `;
@@ -227,6 +342,9 @@
                 const idx = parseInt(sel.dataset.idx);
                 const field = sel.dataset.field;
                 slots[idx][field] = sel.value;
+                if (field === 'provider') {
+                    slots[idx].model = defaultModel(sel.value);
+                }
                 render();
             };
         });
@@ -235,7 +353,8 @@
     // ── Add Agent ────────────────────────────────────────
     btnAdd.addEventListener('click', () => {
         if (slots.length >= MAX_AGENTS) return;
-        slots.push({ provider: '', archetype: '', slotNumber: nextSlot++ });
+        const provider = PROVIDERS[0] || 'openai';
+        slots.push({ provider, model: defaultModel(provider), archetype: '', slotNumber: nextSlot++ });
         render();
     });
 
@@ -243,7 +362,15 @@
     btnConfirm.addEventListener('click', async () => {
         const payload = {
             session_id: SESSION_ID,
-            agents: slots.map(s => ({ provider: s.provider, archetype: s.archetype }))
+            moderator: {
+                provider: moderatorProvider.value,
+                model: moderatorModel.value
+            },
+            agents: slots.map(s => ({
+                provider: s.provider,
+                model: s.model || defaultModel(s.provider),
+                archetype: s.archetype
+            }))
         };
 
         // ── Loading state ─────────────────
@@ -272,7 +399,8 @@
                 feedback.innerHTML =
                     `✓ ${data.agents_configured} agents configured. ` +
                     `<span class="text-text-secondary">${data.moderator_label}</span> included.` +
-                    `<br><span class="text-xs text-text-muted mt-1 block">Session #${data.session_id} is ready for debate.</span>`;
+                    `<br><span class="text-xs text-text-muted mt-1 block">Session #${data.session_id} is ready for debate.</span>` +
+                    `<a href="/session/${data.session_id}/cockpit/" class="inline-block mt-3 bg-emerald text-void px-4 py-2 font-mono text-xs font-semibold hover:bg-emerald/80 transition-colors">LANCER LA DISCUSSION →</a>`;
 
                 btnText.textContent = 'CONFIRMED';
                 btnConfirm.classList.remove('animate-pulse');
@@ -300,10 +428,29 @@
     // ── Init ─────────────────────────────────────────────
     if (existingAgents.length > 0) {
         existingAgents.forEach(a => {
-            slots.push({ provider: a.provider, archetype: a.archetype, slotNumber: a.slot_number });
+            slots.push({
+                provider: a.provider,
+                model: a.model || defaultModel(a.provider),
+                archetype: a.archetype,
+                slotNumber: a.slot_number
+            });
         });
         nextSlot = existingAgents.length + 1;
+    } else {
+        slots = makeDefaultSlots();
+        nextSlot = slots.length + 1;
     }
+    if (!moderatorProvider.value) {
+        moderatorProvider.value = DEFAULT_MODERATOR.provider;
+    }
+    if (!moderatorModel.value) {
+        moderatorModel.value = DEFAULT_MODERATOR.model;
+    }
+    moderatorProvider.addEventListener('change', () => {
+        moderatorModel.value = defaultModel(moderatorProvider.value);
+        refreshModeratorModels();
+    });
+    refreshModeratorModels();
     render();
 })();
 </script>

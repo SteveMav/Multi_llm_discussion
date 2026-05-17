@@ -156,3 +156,181 @@
     box-shadow: 0 0 20px var(--pulse-color, rgba(153, 247, 255, 0.5));
   }
 }
+
+@keyframes scan-line {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes float-subtle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes glow-text {
+  0%, 100% {
+    text-shadow: 0 0 10px rgba(153, 247, 255, 0.4);
+  }
+  50% {
+    text-shadow: 0 0 30px rgba(153, 247, 255, 0.8), 0 0 60px rgba(153, 247, 255, 0.3);
+  }
+}
+
+@keyframes ticker {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────
+   Landing Page — Hero & Sections
+   ──────────────────────────────────────────────────────────── */
+@layer components {
+  /* Hero background grid pattern */
+  .hero-grid {
+    background-image:
+      linear-gradient(rgba(153, 247, 255, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(153, 247, 255, 0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-grid::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(153, 247, 255, 0.04) 50%,
+      transparent 100%
+    );
+    height: 200px;
+    animation: scan-line 4s linear infinite;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Fade-in animation for scroll reveals */
+  .fade-in-up {
+    animation: fade-in-up 0.6s ease-out both;
+  }
+
+  .fade-in-up-delay-1 {
+    animation: fade-in-up 0.6s ease-out 0.1s both;
+  }
+
+  .fade-in-up-delay-2 {
+    animation: fade-in-up 0.6s ease-out 0.2s both;
+  }
+
+  .fade-in-up-delay-3 {
+    animation: fade-in-up 0.6s ease-out 0.3s both;
+  }
+
+  .fade-in-up-delay-4 {
+    animation: fade-in-up 0.6s ease-out 0.4s both;
+  }
+
+  /* Glow text for hero title */
+  .glow-text-cyan {
+    animation: glow-text 3s ease-in-out infinite;
+  }
+
+  /* Floating animation */
+  .float-subtle {
+    animation: float-subtle 4s ease-in-out infinite;
+  }
+
+  /* Terminal cursor blink */
+  .cursor-blink::after {
+    content: '█';
+    animation: ticker 1s step-end infinite;
+    color: var(--color-cyan);
+    margin-left: 2px;
+  }
+
+  /* Card hover lift effect */
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.3s ease;
+  }
+
+  .card-hover:hover {
+    transform: translateY(-2px);
+  }
+
+  /* Tutorial timeline connector */
+  .timeline-step {
+    position: relative;
+    padding-left: 3rem;
+  }
+
+  .timeline-step::before {
+    content: '';
+    position: absolute;
+    left: 0.75rem;
+    top: 2.5rem;
+    bottom: -2rem;
+    width: 2px;
+    background: linear-gradient(
+      180deg,
+      var(--timeline-color, var(--color-cyan)) 0%,
+      transparent 100%
+    );
+  }
+
+  .timeline-step:last-child::before {
+    display: none;
+  }
+
+  .timeline-step .timeline-dot {
+    position: absolute;
+    left: 0.25rem;
+    top: 0.5rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    background: var(--timeline-color, var(--color-cyan));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.625rem;
+    font-family: var(--font-mono);
+    color: var(--color-void);
+    font-weight: 700;
+  }
+
+  /* Step number badge */
+  .step-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 0.75rem;
+  }
+}

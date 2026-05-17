@@ -12,13 +12,19 @@
             <div class="space-y-4">
                 <div>
                     <h1 class="font-headline text-3xl font-bold tracking-wide text-cyan uppercase">{{ session.title }}</h1>
-                    <div class="text-text-muted mt-1 uppercase tracking-widest text-sm">Theme: <span class="text-text-primary">{{ session.topic }}</span></div>
+                    <div class="text-text-muted mt-1 uppercase tracking-widest text-sm">Sujet: <span class="text-text-primary">{{ session.topic }}</span></div>
+                    {% if session.discussion_axes %}
+                    <div class="text-text-muted mt-3 font-mono text-xs whitespace-pre-line max-w-3xl">{{ session.discussion_axes }}</div>
+                    {% endif %}
                 </div>
             </div>
             
             <div class="text-right space-y-4">
                 <div class="bg-layer-1 px-4 py-2 ring-1 ring-white/10 uppercase tracking-widest text-xs">
                     Token Budget: <span class="font-mono text-emerald text-base ml-2">{{ session.token_budget }}</span>
+                </div>
+                <div id="session-status-badge" class="bg-layer-1 px-4 py-2 ring-1 ring-white/10 uppercase tracking-widest text-xs">
+                    Status: <span class="font-mono text-cyan text-base ml-2">{{ session.status }}</span>
                 </div>
                 <!-- Action Placeholder -->
                 <div>
@@ -30,9 +36,9 @@
                 <div>
                     <a id="download-pdf-btn"
                        href="{% url 'dashboard:download-pdf-report' session.id %}"
-                       class="block bg-cyan/10 text-cyan font-headline uppercase tracking-widest px-6 py-3 hover:bg-cyan/20 transition-colors opacity-50 pointer-events-none"
+                       class="block bg-cyan/10 text-cyan font-headline uppercase tracking-widest px-6 py-3 hover:bg-cyan/20 transition-colors {% if session.status != 'SUCCESS' and session.status != 'ABORTED' %}opacity-50 pointer-events-none{% endif %}"
                        style="border-radius: 0;"
-                       aria-disabled="true"
+                       aria-disabled="{% if session.status == 'SUCCESS' or session.status == 'ABORTED' %}false{% else %}true{% endif %}"
                        title="Disponible une fois le débat terminé">
                         ↓ Download PDF Report
                     </a>
@@ -52,8 +58,14 @@
                             <div class="font-headline text-lg" style="color: {{ arch.color }};">{{ arch.label }}</div>
                         {% endif %}
                     {% endfor %}
+                    <div class="font-mono text-[10px] text-text-muted mt-2">{{ agent.model_name|default:"local-simulation" }}</div>
                 </div>
                 {% endfor %}
+                <div class="bg-layer-1 p-4 ring-1 ring-white/5 relative overflow-hidden group">
+                    <div class="font-mono text-[10px] text-text-muted uppercase tracking-wider mb-2">Moderator | {{ moderator.provider|upper }}</div>
+                    <div class="font-headline text-lg text-text-primary">Modérateur Architecte</div>
+                    <div class="font-mono text-[10px] text-text-muted mt-2">{{ moderator.model }}</div>
+                </div>
             </div>
         </section>
 

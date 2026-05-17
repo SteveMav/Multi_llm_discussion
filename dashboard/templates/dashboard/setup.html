@@ -138,10 +138,10 @@
         <section class="surface-1 p-8 mt-8 mb-6 border-t border-layer-3">
             <header class="mb-6">
                 <h2 class="text-2xl font-bold font-headline text-purple mb-2">
-                    Pre-flight Sanity Check
+                    Nouvelle discussion
                 </h2>
                 <p class="font-mono text-sm text-text-muted">
-                    Configure & Arm the Debate Session
+                    Sujet, axes simples et budget. Les modèles se choisissent à l'étape suivante.
                 </p>
             </header>
 
@@ -153,7 +153,7 @@
                     </label>
                     <input type="text" id="session_title" name="title" required
                            class="w-full bg-void text-cyan font-mono text-sm p-3 focus:outline-none focus:ring-1 focus:ring-cyan placeholder:text-text-muted/30"
-                           placeholder="Ex: Ethical alignment...">
+                           placeholder="Ex: Réalité terrain d'un projet mairie">
                 </div>
 
                 <!-- Topic Field -->
@@ -163,7 +163,20 @@
                     </label>
                     <textarea id="session_topic" name="topic" required rows="3"
                            class="w-full bg-void text-purple font-mono text-sm p-3 focus:outline-none focus:ring-1 focus:ring-purple placeholder:text-text-muted/30"
-                           placeholder="Enter debate prompt..."></textarea>
+                           placeholder="Décris le sujet à discuter, avec le contexte que les agents doivent connaître."></textarea>
+                </div>
+
+                <!-- Axes Field -->
+                <div class="space-y-2">
+                    <label for="discussion_axes" class="block font-mono text-sm text-text-primary">
+                        <span class="text-warning">_</span>AXES_DE_DISCUSSION
+                    </label>
+                    <textarea id="discussion_axes" name="discussion_axes" rows="4"
+                           class="w-full bg-void text-warning font-mono text-sm p-3 focus:outline-none focus:ring-1 focus:ring-warning placeholder:text-text-muted/30"
+                           placeholder="- Faisabilité terrain&#10;- Risques et blocages&#10;- Coût / délai&#10;- Décision à prendre"></textarea>
+                    <p class="font-mono text-xs text-text-muted">
+                        Un axe par ligne. C'est volontairement simple: les agents débattront autour de ces angles.
+                    </p>
                 </div>
 
                 <!-- Token Budget Field -->
@@ -181,7 +194,7 @@
                 <div class="mt-8 flex justify-end">
                     <button type="submit" id="btn-arm-session"
                             class="bg-purple text-void px-8 py-3 font-mono text-sm font-semibold hover:bg-purple/80 transition-all flex items-center gap-2">
-                        <span id="btn-text">VALIDER / ARMER</span>
+                        <span id="btn-text">CRÉER LA DISCUSSION</span>
                         <span id="btn-loader" class="hidden h-4 w-4 rounded-full bg-void opacity-75"></span>
                     </button>
                 </div>
@@ -204,6 +217,7 @@ document.getElementById('setup-session-form').addEventListener('submit', async f
     // Retrieve values
     const title = document.getElementById('session_title').value;
     const topic = document.getElementById('session_topic').value;
+    const discussion_axes = document.getElementById('discussion_axes').value;
     const token_budget = parseInt(document.getElementById('token_budget').value, 10);
     
     // Reset feedback
@@ -224,7 +238,7 @@ document.getElementById('setup-session-form').addEventListener('submit', async f
                 'Content-Type': 'application/json',
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
             },
-            body: JSON.stringify({ title, topic, token_budget })
+            body: JSON.stringify({ title, topic, discussion_axes, token_budget })
         });
         
         const data = await response.json();
@@ -235,8 +249,8 @@ document.getElementById('setup-session-form').addEventListener('submit', async f
             feedback.innerHTML = '✓ Session ' + data.session_id + ' Armée et Prête.' +
                 '<a href="/session/' + data.session_id + '/roundtable/" ' +
                 'class="ml-4 inline-block bg-cyan text-void px-4 py-1 font-mono text-xs font-semibold hover:bg-cyan/80 transition-colors">' +
-                'CONFIGURE ROUNDTABLE →</a>';
-            btnText.textContent = 'ARMÉE';
+                'CHOISIR LES MODÈLES →</a>';
+            btnText.textContent = 'CRÉÉE';
             btn.classList.remove('animate-pulse', 'shadow-[0_0_15px_rgba(168,85,247,0.6)]');
             btnLoader.classList.remove('animate-ping');
             btnLoader.classList.add('hidden');
@@ -250,7 +264,7 @@ document.getElementById('setup-session-form').addEventListener('submit', async f
         
         // Reset button
         btn.disabled = false;
-        btnText.textContent = 'VALIDER / ARMER';
+        btnText.textContent = 'CRÉER LA DISCUSSION';
         btn.classList.remove('animate-pulse', 'shadow-[0_0_15px_rgba(168,85,247,0.6)]');
         btnLoader.classList.remove('animate-ping');
         btnLoader.classList.add('hidden');

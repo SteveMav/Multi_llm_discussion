@@ -463,11 +463,12 @@ def generate_pdf_report(session) -> bytes:
                 story.append(Spacer(1, 2 * mm))
                 continue
             # Attempt to detect "AGENT: message" format
-            if ":" in line and len(line.split(":", 1)[0]) < 30:
+            if ":" in line and len(line.split(":", 1)[0]) < 90:
                 agent_id, content = line.split(":", 1)
                 agent_id = agent_id.strip()
-                label = _ARCHETYPE_LABELS.get(agent_id.lower(), agent_id.upper())
-                accent = _ARCHETYPE_COLORS.get(agent_id.lower(), _WHITE)
+                base_agent_id = agent_id.split("[", 1)[0].strip().lower()
+                label = _ARCHETYPE_LABELS.get(base_agent_id, agent_id.upper())
+                accent = _ARCHETYPE_COLORS.get(base_agent_id, _WHITE)
                 story.append(Paragraph(
                     label,
                     ParagraphStyle(

@@ -3,6 +3,7 @@ import json
 
 from asgiref.sync import sync_to_async
 from django.contrib import messages
+from django.db import OperationalError
 from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse, StreamingHttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
@@ -16,10 +17,25 @@ from orchestrator.genetic import (
     MAX_AGENTS,
     get_archetype_choices,
 )
+from orchestrator.llm_clients import DEFAULT_MODERATOR, DEFAULT_MODELS, provider_model_options
 from orchestrator.safety import run_sanity_check, set_abort_event
 from orchestrator.engine import run_debate_engine
 from orchestrator.exporter import generate_pdf_report
 from .models import ApiKeyStorage, Session, SessionAgent
+
+
+KNOWN_PROVIDERS = ["openai", "gemini"]
+
+
+def configured_provider_names() -> list[str]:
+    """Providers visible in the UI, including env-backed defaults."""
+    db_providers = list(ApiKeyStorage.objects.values_list("provider", flat=True))
+    providers = [*KNOWN_PROVIDERS, *db_providers]
+    return list(dict.fromkeys(p.strip().lower() for p in providers if p.strip()))
+
+
+def default_model_for(provider: str) -> str:
+    return DEFAULT_MODELS.get(provider.strip().lower(), "local-simulation")
 
 
 class HomeView(TemplateView):
@@ -44,7 +60,7 @@ class SetupView(TemplateView):
         if delete_provider:
             ApiKeyStorage.objects.filter(provider=delete_provider).delete()
             messages.success(request, f"✓ Provider {delete_provider.upper()} supprimé.")
-            return redirect('setup')
+            return redirect('dashboard:setup')
 
         main_providers = ['openai', 'gemini', 'anthropic']
         updated_count = 0
@@ -79,7 +95,9 @@ class SetupView(TemplateView):
         return redirect('dashboard:setup')
 
 
-
+class TutorialView(TemplateView):
+    """Step-by-step tutorial for the MAS-D platform."""
+    template_name = 'dashboard/tutorial.html'
 
 
 class SessionCreateAPIView(View):
@@ -90,7 +108,8 @@ class SessionCreateAPIView(View):
             data = json.loads(request.body)
             title = data.get('title')
             topic = data.get('topic')
-            token_budget = data.get('token_budget')
+            discussion_axes = data.get('discussion_axes', '')
+            token_budget = data.get('token_budget') or 5000
             
             if not all([title, topic, token_budget]):
                 return JsonResponse({"success": False, "error": "Missing required fields."}, status=400)
@@ -105,8 +124,11 @@ class SessionCreateAPIView(View):
             session = Session.objects.create(
                 title=title,
                 topic=topic,
+                discussion_axes=discussion_axes,
                 token_budget=token_budget,
-                status='READY'
+                status='READY',
+                moderator_provider=DEFAULT_MODERATOR["provider"],
+                moderator_model=DEFAULT_MODERATOR["model"],
             )
             
             return JsonResponse({"success": True, "session_id": session.id}, status=201)
@@ -163,12 +185,13 @@ class RoundtableView(TemplateView):
         context['min_agents'] = MIN_AGENTS
         context['max_agents'] = MAX_AGENTS
         # Available providers = configured API keys
-        context['providers'] = list(
-            ApiKeyStorage.objects.values_list('provider', flat=True)
-        )
+        context['providers'] = configured_provider_names()
+        context['model_options'] = provider_model_options()
+        context['default_models'] = DEFAULT_MODELS
+        context['default_moderator'] = DEFAULT_MODERATOR
         # Existing agents for this session
         context['existing_agents'] = list(
-            session.agents.values('slot_number', 'provider', 'archetype')
+            session.agents.values('slot_number', 'provider', 'model_name', 'archetype')
         )
         return context
 
@@ -244,15 +267,13 @@ class RoundtableConfigAPIView(View):
 
         # ── Per-agent validation ──────────────────────────
         valid_archetype_keys = set(ARCHETYPES.keys())
-        configured_providers = set(
-            ApiKeyStorage.objects.values_list("provider", flat=True)
-        )
         seen_archetypes: set[str] = set()
         validated_agents: list[dict] = []
 
         for idx, agent in enumerate(agents_data, start=1):
             provider = agent.get("provider", "").strip().lower()
             archetype = agent.get("archetype", "").strip().lower()
+            model_name = agent.get("model", "").strip() or default_model_for(provider)
 
             if not provider or not archetype:
                 return JsonResponse(
@@ -287,7 +308,7 @@ class RoundtableConfigAPIView(View):
                     status=400,
                 )
 
-            if provider not in configured_providers:
+            if provider not in KNOWN_PROVIDERS and not ApiKeyStorage.get_key(provider):
                 return JsonResponse(
                     {
                         "success": False,
@@ -303,10 +324,19 @@ class RoundtableConfigAPIView(View):
             validated_agents.append(
                 {
                     "provider": provider,
+                    "model_name": model_name,
                     "archetype": archetype,
                     "slot_number": idx,
                 }
             )
+
+        moderator_data = data.get("moderator", {}) or {}
+        moderator_provider = (
+            moderator_data.get("provider") or DEFAULT_MODERATOR["provider"]
+        ).strip().lower()
+        moderator_model = (
+            moderator_data.get("model") or DEFAULT_MODERATOR["model"]
+        ).strip()
 
         # ── Persist ───────────────────────────────────────
         # Clear previous configuration for this session
@@ -321,7 +351,16 @@ class RoundtableConfigAPIView(View):
 
         # Update session status
         session.status = "CONFIGURING"
-        session.save(update_fields=["status", "updated_at"])
+        session.moderator_provider = moderator_provider
+        session.moderator_model = moderator_model
+        session.save(
+            update_fields=[
+                "status",
+                "moderator_provider",
+                "moderator_model",
+                "updated_at",
+            ]
+        )
 
         # ── Response ──────────────────────────────────────
         return JsonResponse(
@@ -335,6 +374,7 @@ class RoundtableConfigAPIView(View):
                     {
                         "slot": a.slot_number,
                         "provider": a.provider,
+                        "model": a.model_name,
                         "archetype": a.archetype,
                         "archetype_label": ARCHETYPES[a.archetype]["label"],
                     }
@@ -364,6 +404,10 @@ async def cockpit_view(request, session_id):
         "agents": agents_qs,
         "stream_url": stream_url,
         "ARCHETYPES": ARCHETYPES,
+        "moderator": {
+            "provider": session.moderator_provider,
+            "model": session.moderator_model,
+        },
     }
     return render(request, "dashboard/cockpit.html", context)
 
@@ -389,26 +433,111 @@ async def stream_debate(request, session_id):
     agents = [
         {
             "provider": a.provider,
+            "model": a.model_name or default_model_for(a.provider),
+            "api_key": await sync_to_async(ApiKeyStorage.get_key)(a.provider),
             "archetype": a.archetype,
             "slot_number": a.slot_number,
         }
         for a in agents_qs
     ]
+    moderator = {
+        "provider": session.moderator_provider or DEFAULT_MODERATOR["provider"],
+        "model": session.moderator_model or DEFAULT_MODERATOR["model"],
+        "api_key": await sync_to_async(ApiKeyStorage.get_key)(
+            session.moderator_provider or DEFAULT_MODERATOR["provider"]
+        ),
+    }
 
     session.status = "RUNNING"
     await sync_to_async(session.save)(update_fields=["status", "updated_at"])
 
     async def event_stream():
+        transcript_lines: list[str] = []
+
+        async def persist_terminal(status: str, justification: str = ""):
+            update_fields = {
+                "status": status,
+                "transcript": "\n\n".join(transcript_lines),
+            }
+            if justification:
+                update_fields["abort_justification"] = justification
+            try:
+                await sync_to_async(Session.objects.filter(id=session.id).update)(
+                    **update_fields
+                )
+            except OperationalError as exc:
+                if "locked" not in str(exc).lower():
+                    raise
+
         try:
-            async for event in run_debate_engine(agents, session.topic, confrontation_rounds=2, session_id=session.id):
+            async for event in run_debate_engine(
+                agents,
+                session.topic,
+                axes=session.discussion_axes,
+                moderator=moderator,
+                confrontation_rounds=1,
+                session_id=session.id,
+            ):
+                transcript_line = _transcript_line(event)
+                if transcript_line:
+                    transcript_lines.append(transcript_line)
+
+                if event.get("type") == "done":
+                    await persist_terminal("SUCCESS")
+                    yield f"data: {json.dumps(event)}\n\n"
+                    break
+
+                if event.get("type") == "error":
+                    try:
+                        current_status = await sync_to_async(
+                            lambda: Session.objects.get(id=session.id).status
+                        )()
+                    except OperationalError:
+                        current_status = "RUNNING"
+                    if current_status == "ABORTED":
+                        try:
+                            await sync_to_async(Session.objects.filter(id=session.id).update)(
+                                transcript="\n\n".join(transcript_lines)
+                            )
+                        except OperationalError as exc:
+                            if "locked" not in str(exc).lower():
+                                raise
+                    else:
+                        await persist_terminal("ABORTED", event.get("content", "Erreur moteur."))
+                    yield f"data: {json.dumps(event)}\n\n"
+                    break
+
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'agent_id': 'system', 'content': f'Engine exception: {str(e)}'})}\n\n"
+            error_event = {
+                "type": "error",
+                "agent_id": "system",
+                "content": f"Engine exception: {str(e)}",
+            }
+            transcript_lines.append(_transcript_line(error_event))
+            await persist_terminal("ABORTED", error_event["content"])
+            yield f"data: {json.dumps(error_event)}\n\n"
 
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response
+
+
+def _transcript_line(event: dict) -> str:
+    event_type = event.get("type")
+    content = (event.get("content") or "").strip()
+    if not content or event_type == "thought":
+        return ""
+    agent_id = event.get("agent_id") or "system"
+    provider = event.get("provider")
+    model = event.get("model")
+    phase = event.get("phase")
+    meta = " / ".join(str(x) for x in (phase, provider, model) if x)
+    prefix = f"{agent_id}:"
+    if meta:
+        prefix = f"{agent_id} [{meta}]:"
+    return f"{prefix} {content}"
 
 
 async def download_pdf_report(request, session_id):

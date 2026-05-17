@@ -1,3 +1,5 @@
+import os
+
 from django.core.exceptions import ValidationError
 from django.db import models
 from django_cryptography.fields import encrypt
@@ -20,11 +22,13 @@ class ApiKeyStorage(models.Model):
 
     @classmethod
     def get_key(cls, provider: str) -> str | None:
+        provider_key = provider.strip().lower()
         try:
-            record = cls.objects.get(provider=provider)
+            record = cls.objects.get(provider=provider_key)
             return record.api_key
         except cls.DoesNotExist:
-            return None
+            env_name = f"{provider_key.upper().replace('-', '_')}_API_KEY"
+            return os.environ.get(env_name)
 
     def __str__(self):
         return f"API Key for {self.provider}"
@@ -40,9 +44,13 @@ class Session(models.Model):
     ]
     title = models.CharField(max_length=255)
     topic = models.TextField()
+    discussion_axes = models.TextField(blank=True, default="")
     token_budget = models.IntegerField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='READY')
     abort_justification = models.TextField(blank=True, null=True)
+    moderator_provider = models.CharField(max_length=50, default="gemini")
+    moderator_model = models.CharField(max_length=120, default="gemini-3-flash-preview")
+    transcript = models.TextField(blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -86,6 +94,12 @@ class SessionAgent(models.Model):
         max_length=50,
         help_text="AI provider key, e.g. 'openai', 'gemini', 'anthropic'",
     )
+    model_name = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Provider model id, e.g. 'gpt-5.5' or 'gemini-3-pro-preview'",
+    )
     archetype = models.CharField(
         max_length=30,
         choices=get_archetype_choices(),
@@ -127,4 +141,5 @@ class SessionAgent(models.Model):
 
     def __str__(self):
         label = ARCHETYPES.get(self.archetype, {}).get("label", self.archetype)
-        return f"[{self.slot_number}] {self.provider} → {label}"
+        model = f"/{self.model_name}" if self.model_name else ""
+        return f"[{self.slot_number}] {self.provider}{model} -> {label}"

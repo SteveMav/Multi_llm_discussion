@@ -1,6 +1,5 @@
-import logging
 import asyncio
-from dashboard.models import ApiKeyStorage
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +23,13 @@ def clear_abort_event(session_id: int) -> None:
 def run_sanity_check(topic: str) -> bool:
     """
     Perform a sanity check on the provided debate topic.
-    Verifies API keys and performs a dummy/test LLM request to ensure connectivity
-    and prevent moderation blocks before the session actually starts.
+    The MVP keeps this intentionally permissive: API connectivity is validated
+    during the live stream and gracefully falls back to local simulation.
     """
     if not topic or not topic.strip():
         logger.error("Empty topic provided.")
         return False
-        
-    # Check if ANY API key is configured
-    has_keys = ApiKeyStorage.objects.exists()
-    
-    if not has_keys:
-        logger.error("No API key configured for sanity check.")
+    if len(topic.strip()) < 8:
+        logger.error("Topic too short for a useful debate.")
         return False
-        
-    # TODO: Perform actual API call to validate the topic
-    # For now, simulate success
     return True
